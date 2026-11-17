@@ -8,7 +8,7 @@ Sonora music player (or any player that Windows exposes through its
 media controls). It sits on your desktop as a rounded pill with the album cover, the
 current lyric line, a progress bar and a small 4-band audio visualizer.
 
-> Add a screenshot or GIF here: put it in `docs/` and link it, e.g. `![preview](docs/preview.png)`.
+<img width="842" height="63" alt="RainmeterLyrics" src="https://github.com/user-attachments/assets/54bcd47e-33c3-4e06-bb48-57ace9e1fdc6" />
 
 ## Features
 
