@@ -27,17 +27,21 @@ current lyric line, a progress bar and a small 4-band audio visualizer.
 ## Requirements
 
 - Windows 10 or 11 and a recent [Rainmeter](https://www.rainmeter.net/).
-- The [MediaPlayer plugin](https://github.com/i2002/RainmeterMediaPlayer) (`MediaPlayer.dll`)
-  in your Rainmeter `Plugins` folder. Release packages may already include it.
+- The [MediaPlayer skin and plugin](https://github.com/i2002/RainmeterMediaPlayer) by i2002.
+  Install its `media_player.rmskin` from that project's Releases page **before** Rainmeter Lyrics.
+  The plugin is what reads the title, artist, cover and position from your player.
 - An internet connection for fetching lyrics.
 
 ## Installation
-
-1. Download the latest `.rmskin` from the [Releases](../../releases) page and open it.
+1. Install the MediaPlayer skin/plugin (see Requirements) and restart Rainmeter once.
+2. Download the latest `.rmskin` from the [Releases](../../releases) page and open it.
    Rainmeter installs it for you.
-2. In Rainmeter's manager load `SonoraLyrics\Lyrics\SonoraLyrics.ini`.
-3. Right-click the skin and choose the settings entry, or load
+3. In Rainmeter's manager load `SonoraLyrics\Lyrics\SonoraLyrics.ini`.
+4. Right-click the skin and choose the settings entry, or load
    `SonoraLyrics\Settings\SonoraSettings.ini`, to adjust it.
+
+**Title/lyrics don't show up?** Make sure the MediaPlayer skin from the link above is
+installed. Rainmeter Lyrics needs its plugin.
 
 Settings are saved to `@Resources\Settings.inc`. Changes apply about a second after your
 last click.
