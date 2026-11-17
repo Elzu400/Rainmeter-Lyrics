@@ -1,4 +1,7 @@
-# SonoraLyrics
+# Rainmeter Lyrics
+
+> The project was renamed from *SonoraLyrics*. The skin folder, file names and in-code names
+> still say `SonoraLyrics` for now, so paths below use that name.
 
 A Rainmeter skin that shows **synced lyrics** for whatever is playing in the
 Sonora music player (or any player that Windows exposes through its
@@ -93,7 +96,7 @@ the project.
 
 ## License
 
-Copyright (C) 2026 the SonoraLyrics authors. Licensed under the
+Copyright (C) 2026 Elzu400. Rainmeter Lyrics is licensed under the
 **GNU General Public License v3.0 or later**. See [LICENSE](LICENSE).
 In short: you can use, change and share it, but if you distribute a modified version it
 must stay open source under the same license.
@@ -106,3 +109,9 @@ Third-party components and services (MediaPlayer plugin, LRCLIB) are listed in
 - Lyrics: [LRCLIB](https://lrclib.net)
 - Media information: [RainmeterMediaPlayer](https://github.com/i2002/RainmeterMediaPlayer) by i2002
 - [Rainmeter](https://www.rainmeter.net)
+
+## AI disclosure
+
+This project was developed with substantial help from an AI assistant (Anthropic's Claude),
+which wrote much of the code and documentation under my direction. I tested and reviewed
+the result on my own setup, but it may contain mistakes. Please report any issues you find.
