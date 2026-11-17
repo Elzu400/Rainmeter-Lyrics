@@ -1,0 +1,6 @@
+# keep source files with LF line endings and treat them as text
+* text=auto
+*.lua text eol=lf
+*.tpl text eol=lf
+*.py text eol=lf
+*.md text eol=lf
