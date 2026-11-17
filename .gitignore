@@ -1,0 +1,13 @@
+# build output
+out/
+test_tree/
+*.zip
+*.rmskin
+__pycache__/
+# editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+# plugin binaries are not kept in the repo (see THIRD_PARTY.md)
+*.dll
