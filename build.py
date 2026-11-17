@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (C) 2026 the SonoraLyrics authors
+# Copyright (C) 2026 Elzu400
 # SPDX-License-Identifier: GPL-3.0-or-later (see LICENSE)
 """Builds the SonoraLyrics skin folder (and a test tree with ASCII Lua) from templates."""
 import os, shutil, sys, zipfile

@@ -1,4 +1,4 @@
--- Copyright (C) 2026 the SonoraLyrics authors
+-- Copyright (C) 2026 Elzu400
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- This file is part of SonoraLyrics, free software under the GNU GPL v3 or later (see LICENSE).
 
