@@ -19,6 +19,8 @@ current lyric line, a progress bar and a small 4-band audio visualizer.
   Calm, with no constant scrolling.
 - **Scrolling (legacy) style:** the original continuously scrolling strip, one switch away.
 - A music note for instrumental gaps and pauses.
+- Optional **playback controls** (previous, play/pause, next) in place of the visualizer, for the Slim layout.
+- **Combined** mode (Slim): shows the visualizer, (8 bars, sized to fill the space the buttons use) swaps to the controls while the mouse is over it, and goes back after a short delay (adjustable on the Motion tab).
 - Smooth progress bar and a 4-band visualizer.
 - A built-in settings window: size, presets (**Classic** and **Slim**), fonts, highlight
   shape, timing offset, colors, frame rate (60 fps by default).
@@ -50,7 +52,7 @@ last click.
 
 | Tab | What it controls |
 | --- | --- |
-| Layout | Presets, width/height, album cover, visualizer, progress bar |
+| Layout | Presets, width/height, album cover, right side (visualizer / playback controls / combined / nothing), progress bar |
 | Lyrics | Lyric style (Paged or Scrolling), font, words per highlight, highlight shape, spacing, timing offset |
 | Colors | Manual colors or wallpaper average, opacity |
 | Motion | Frame rate, smoothness, visualizer sensitivity, debug overlay |

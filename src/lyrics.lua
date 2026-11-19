@@ -62,7 +62,11 @@ local curMode = nil                  -- true = lyric strip, false = title/artist
 local wall, lastWallRun = nil, nil
 
 -- visualizer
-local vis = { h = { 0, 0, 0, 0 }, key = nil }
+local vis = { h = { 0, 0, 0, 0, 0, 0, 0, 0 }, key = nil }
+
+-- playback buttons (slim layout only); each is a Shape meter that the ini defines
+local BTN = { 'BtnPrev', 'BtnPlay', 'BtnNext' }
+local ctl = { key = nil, hover = nil, a = 0, seen = -1e9, on = nil }   -- a: 0 = hidden .. 1 = fully shown
 
 -- debug
 local lastDbg, dbgCur = 0, '-'
@@ -182,7 +186,18 @@ local function loadConfig()
   C.progH       = num('ProgressHeight', 3)
   C.progBottom  = num('ProgressBottom', 13)
   C.nudgeY      = num('TextNudgeY', 4)
-  C.showVis     = num('ShowVis', 1) ~= 0
+  -- right-hand panel: 'vis' (visualizer), 'controls' (prev / play-pause / next) or 'off'.
+  -- Controls need the slim layout; on a taller bar the visualizer is shown instead.
+  -- 'combined' shows the visualizer and swaps to the controls while the mouse is over it.
+  C.right       = var('RightPanel', (num('ShowVis', 1) ~= 0) and 'vis' or 'off')
+  if C.right ~= 'controls' and C.right ~= 'combined' and C.right ~= 'off' then C.right = 'vis' end
+  local slim    = C.H < 60
+  C.combo       = (C.right == 'combined') and slim
+  C.showCtl     = ((C.right == 'controls') or (C.right == 'combined')) and slim
+  C.showVis     = (C.right == 'vis') or C.combo or ((C.right == 'controls' or C.right == 'combined') and not slim)
+  C.ctlHold     = max(0, num('CtlHold', 1500) / 1000)
+  C.ctlS        = min(26, max(16, C.H - 16))
+  C.ctlGap      = 2
   C.visBarW     = num('VisBarWidth', 4)
   C.visGap      = num('VisGap', 3)
   C.visH        = num('VisHeight', 28)
@@ -219,10 +234,24 @@ local function computeLayout()
   L.coverX = C.pad
   L.coverY = round((C.H - C.coverSize) / 2)
   L.barX = C.pad + (C.showCover and (C.coverSize + C.coverGap) or 0)
-  L.visW = C.showVis and (4 * C.visBarW + 3 * C.visGap) or 0
+  L.ctlW = C.showCtl and (3 * C.ctlS + 2 * C.ctlGap) or 0
+  -- visualizer bars: 4 normally; 8 thinner-spaced ones that fill the button area in combined mode
+  L.visN, L.vBar, L.vGap = 4, C.visBarW, C.visGap
+  if C.combo then
+    L.visN = 8
+    L.vGap = max(C.visGap, round(C.ctlS * 0.15))
+    L.vBar = max(2, floor((L.ctlW - 7 * L.vGap) / 8))
+  end
+  L.visW = C.showVis and (L.visN * L.vBar + (L.visN - 1) * L.vGap) or 0
   L.visX = C.W - C.pad - L.visW
+  L.ctlX = C.W - C.pad - L.ctlW
+  L.ctlY = round(C.H / 2 - C.ctlS / 2)
   local right = C.W - C.pad
-  if C.showVis then right = L.visX - 14 end
+  if C.combo then
+    L.visX = L.ctlX + round((L.ctlW - L.visW) / 2)     -- visualizer sits centred in the button area
+    right = L.ctlX - 10
+  elseif C.showVis then right = L.visX - 14
+  elseif C.showCtl then right = L.ctlX - 10 end
   L.barW = max(80, right - L.barX)
   L.boxH = round(C.fontSize * 2)
   L.progY = C.H - C.progBottom - C.progH
@@ -347,6 +376,29 @@ local function applyLayout()
     b[#b + 1] = '[!HideMeter Vis]'
   end
 
+  -- playback buttons (in combined mode they appear on hover, see drawCtl)
+  ctl.on = nil
+  for i, name in ipairs(BTN) do
+    if C.showCtl then
+      b[#b + 1] = string.format('[!SetOption %s X %d][!SetOption %s Y %d]%s',
+        name, L.ctlX + (i - 1) * (C.ctlS + C.ctlGap), name, L.ctlY,
+        C.combo and ('[!HideMeter ' .. name .. ']') or ('[!ShowMeter ' .. name .. ']'))
+    else
+      b[#b + 1] = '[!HideMeter ' .. name .. ']'
+    end
+  end
+  if C.combo then
+    ctl.a = 0
+    b[#b + 1] = string.format('[!SetOption CtlZone X %d][!SetOption CtlZone Y 0]', L.ctlX - 6)
+    b[#b + 1] = string.format('[!SetOption CtlZone Shape "Rectangle 0,0,%d,%d | Fill Color 255,255,255,1 | StrokeWidth 0"]',
+      L.ctlW + 12, C.H)
+    b[#b + 1] = '[!ShowMeter CtlZone]'
+  else
+    ctl.a = C.showCtl and 1 or 0
+    b[#b + 1] = '[!HideMeter CtlZone]'
+  end
+  vis.on = nil
+
   b[#b + 1] = string.format('[!SetOption DebugText Y %d]', C.H + 6)
   if C.debug then b[#b + 1] = '[!ShowMeter DebugText]' end
   b[#b + 1] = '[!UpdateMeter *][!Redraw]'
@@ -355,6 +407,7 @@ end
 
 local function forceRedrawState()
   lastProg, lastPill, lastFill, vis.key = nil, nil, nil, nil
+  ctl.key = nil
   for m = 1, N do if S[m] then S[m].col = nil end end
 end
 
@@ -610,16 +663,30 @@ end
 
 local function updateVis(dt, cmd, playing)
   if not C.showVis then return end
-  local gains = { 1.0, 1.15, 1.35, 1.7 }
+  local va = C.combo and (1 - ctl.a) or 1          -- visualizer opacity (fades out while the controls show)
+  local want = va > 0.01
+  if vis.on ~= want then
+    vis.on = want
+    cmd[#cmd + 1] = want and '[!ShowMeter Vis]' or '[!HideMeter Vis]'
+  end
+  if not want then return end
+  -- the audio measure always has 8 bands; with 4 bars each bar averages a pair of them
+  local gains8 = { 1.0, 1.07, 1.15, 1.25, 1.35, 1.5, 1.7, 1.85 }
+  local gains4 = { 1.0, 1.15, 1.35, 1.7 }
+  local n = L.visN
   local maxH = C.visH
-  local minH = max(3, C.visBarW)
+  local minH = max(3, L.vBar)
   local hs, parts = {}, {}
-  for i = 1, 4 do
+  for i = 1, n do
     local v = 0
-    if playing and bandM[i] then
-      v = clamp((bandM[i]:GetValue() or 0) * gains[i], 0, 1)
+    if playing then
+      if n == 8 then
+        if bandM[i] then v = clamp((bandM[i]:GetValue() or 0) * gains8[i], 0, 1) end
+      elseif bandM[2 * i - 1] and bandM[2 * i] then
+        v = clamp(((bandM[2 * i - 1]:GetValue() or 0) + (bandM[2 * i]:GetValue() or 0)) / 2 * gains4[i], 0, 1)
+      end
     end
-    local cur = vis.h[i]
+    local cur = vis.h[i] or 0
     local rate = (v > cur) and 30 or 7
     cur = cur + (v - cur) * (1 - exp(-dt * rate))
     vis.h[i] = cur
@@ -627,21 +694,91 @@ local function updateVis(dt, cmd, playing)
     hs[i] = floor(h * 2 + 0.5) / 2
     parts[i] = hs[i]
   end
-  local key = table.concat(parts, ':')
+  local alpha = round(230 * va)
+  local key = table.concat(parts, ':') .. '|' .. alpha
   if key ~= vis.key then
     vis.key = key
-    for i = 1, 4 do
-      local x = (i - 1) * (C.visBarW + C.visGap)
+    for i = 1, n do
+      local x = (i - 1) * (L.vBar + L.vGap)
       local y = (maxH - hs[i]) / 2
       local opt = (i == 1) and 'Shape' or ('Shape' .. i)
       cmd[#cmd + 1] = string.format(
-        '[!SetOption Vis %s "Rectangle %d,%.1f,%d,%.1f,%.1f | Fill Color %s,230 | StrokeWidth 0"]',
-        opt, x, y, C.visBarW, hs[i], C.visBarW / 2, K.light)
+        '[!SetOption Vis %s "Rectangle %d,%.1f,%d,%.1f,%.1f | Fill Color %s,%d | StrokeWidth 0"]',
+        opt, x, y, L.vBar, hs[i], L.vBar / 2, K.light, alpha)
     end
   end
 end
 
 -- ---------- player state ----------
+
+-- ---------- playback buttons ----------
+
+-- called by the buttons' MouseOver / MouseLeave actions
+function Hover(name)
+  if name == nil or name == '' then ctl.hover = nil else ctl.hover = name end
+  ctl.seen = os.clock()
+end
+
+-- combined mode: controls fade in while hovered and fade out again shortly after the mouse leaves
+local function stepCtl(now, dt)
+  if not C.combo then return end
+  if ctl.hover then ctl.seen = now end
+  local target = (ctl.hover or (now - ctl.seen) < C.ctlHold) and 1 or 0
+  local step = dt / 0.18
+  if ctl.a < target then ctl.a = min(target, ctl.a + step)
+  elseif ctl.a > target then ctl.a = max(target, ctl.a - step) end
+end
+
+local function drawCtl(cmd, playing)
+  if not C.showCtl then return end
+  local hv = ctl.hover or '-'
+  local fade = ctl.a
+  local want = fade > 0.01
+  if ctl.on ~= want then
+    ctl.on = want
+    for _, name in ipairs(BTN) do cmd[#cmd + 1] = (want and '[!ShowMeter ' or '[!HideMeter ') .. name .. ']' end
+  end
+  if not want then ctl.key = nil; return end
+  local key = tostring(playing) .. hv .. K.textStr .. K.accentStr .. round(fade * 40)
+  if key == ctl.key then return end
+  ctl.key = key
+
+  local s = C.ctlS
+  local c = s / 2
+  local h = max(4, s * 0.2)                       -- half the glyph height
+  local rect = function(x, y, w, hh) return string.format('Rectangle %.1f,%.1f,%.1f,%.1f,1', x, y, w, hh) end
+  local none = 'Rectangle 0,0,0.1,0.1,0'
+  for i, name in ipairs(BTN) do
+    local id = (i == 1) and 'prev' or ((i == 2) and 'play' or 'next')
+    local hot = (hv == id)
+    local bgA = max(1, round((hot and 70 or 1) * fade))
+    local ia = round((hot and 255 or 225) * fade)
+    local fill = ' | Fill Color ' .. K.textStr .. ',' .. ia .. ' | StrokeWidth 0'
+    local s2, s3 = none .. fill, none .. fill
+    if id == 'prev' then
+      cmd[#cmd + 1] = string.format('[!SetOption %s IconPath "%.1f,%.1f | LineTo %.1f,%.1f | LineTo %.1f,%.1f | ClosePath 1"]',
+        name, c + h, c - h, c - h + 3, c, c + h, c + h)
+      s2 = 'Path IconPath' .. fill
+      s3 = rect(c - h - 2, c - h, 2, 2 * h) .. fill
+    elseif id == 'next' then
+      cmd[#cmd + 1] = string.format('[!SetOption %s IconPath "%.1f,%.1f | LineTo %.1f,%.1f | LineTo %.1f,%.1f | ClosePath 1"]',
+        name, c - h, c - h, c + h - 3, c, c - h, c + h)
+      s2 = 'Path IconPath' .. fill
+      s3 = rect(c + h, c - h, 2, 2 * h) .. fill
+    elseif playing then
+      s2 = rect(c - h * 0.8 - 1.5, c - h, 3, 2 * h) .. fill
+      s3 = rect(c + h * 0.8 - 1.5, c - h, 3, 2 * h) .. fill
+    else
+      cmd[#cmd + 1] = string.format('[!SetOption %s IconPath "%.1f,%.1f | LineTo %.1f,%.1f | LineTo %.1f,%.1f | ClosePath 1"]',
+        name, c - h * 0.7, c - h, c + h, c, c - h * 0.7, c + h)
+      s2 = 'Path IconPath' .. fill
+    end
+    cmd[#cmd + 1] = string.format('[!SetOption %s Shape "Rectangle 0,0,%d,%d,%.1f | Fill Color %s,%d | StrokeWidth 0"]',
+      name, s, s, s * 0.3, K.accentStr, bgA)
+    cmd[#cmd + 1] = '[!SetOption ' .. name .. ' Shape2 "' .. s2 .. '"]'
+    cmd[#cmd + 1] = '[!SetOption ' .. name .. ' Shape3 "' .. s3 .. '"]'
+  end
+end
 
 local function readTime(m)
   local s = m:GetStringValue() or ''
@@ -1054,7 +1191,7 @@ local function setup()
   if not (mTitle and mArtist and mPosition and mDuration and mState and mProgress and mLyrics) then
     return false
   end
-  for i = 1, 4 do bandM[i] = SKIN:GetMeasure('mBand' .. i) end
+  for i = 1, 8 do bandM[i] = SKIN:GetMeasure('mBand' .. i) end
   for m = 1, N do
     segM[m] = SKIN:GetMeter('S' .. m)
     S[m] = {}
@@ -1161,7 +1298,9 @@ function Update()
   end
 
   -- visualizer
+  stepCtl(now, dt)
   updateVis(dt, cmd, playing)
+  drawCtl(cmd, playing)
 
   -- lyrics
   if curMode and nw > 0 then

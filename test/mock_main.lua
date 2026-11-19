@@ -25,6 +25,7 @@ if os.getenv('MOCK_WORDS') then VARS.PillWords = os.getenv('MOCK_WORDS') end
 if os.getenv('MOCK_DEBUG') then VARS.Debug = '1' end
 if os.getenv('MOCK_WALL') then VARS.ColorMode = 'wallpaper' end
 if os.getenv('MOCK_STYLE') then VARS.PillStyle = os.getenv('MOCK_STYLE') end
+if os.getenv('MOCK_RIGHT') then VARS.RightPanel = os.getenv('MOCK_RIGHT') end
 if os.getenv('MOCK_MODE') then VARS.LyricMode = os.getenv('MOCK_MODE') end
 
 -- ---------- meters / measures from the ini ----------
@@ -64,7 +65,7 @@ local function err(msg) errors[#errors + 1] = msg; if #errors < 15 then io.stder
 local songT, playing = 0, true
 local title, artist = 'Midnight Drive', 'The Testers'
 local lyricsRaw = ''
-local band = { 0, 0, 0, 0 }
+local band = { 0, 0, 0, 0, 0, 0, 0, 0 }
 
 local function mm(t) return string.format('%02d:%02d', math.floor(t / 60), math.floor(t % 60)) end
 
@@ -82,7 +83,7 @@ local MS = {
   mLyrics = mk(function() return lyricsRaw end, function() return 0 end),
   mWall = mk(function() return '40,90,160' end, function() return 0 end),
 }
-for i = 1, 4 do MS['mBand' .. i] = mk(function() return '' end, function() return band[i] end) end
+for i = 1, 8 do MS['mBand' .. i] = mk(function() return '' end, function() return band[i] end) end
 
 SKIN = {}
 function SKIN:GetVariable(name, default)
@@ -273,7 +274,8 @@ for f = 1, totalFrames + 200 do
     if f == atTime(60) then songT = 44.0 end                 -- seek forwards
     if f == atTime(74) then title, artist, songT, lyricsRaw = 'No Lyrics Here', 'Nobody', 0, '' ; waitFetchFailed = true end
   end
-  band = { 0.5 + 0.5 * math.sin(clock * 3), 0.4 + 0.4 * math.sin(clock * 5), 0.3 + 0.3 * math.sin(clock * 7), 0.2 + 0.2 * math.sin(clock * 9) }
+  band = {}
+  for i = 1, 8 do band[i] = 0.5 + 0.45 * math.sin(clock * (2 + i)) end
 
   local ok, e = pcall(Update)
   if not ok then err('Update crashed at frame ' .. f .. ': ' .. tostring(e)); break end
@@ -366,4 +368,44 @@ print('Pill Path      =', meters.Pill.opts.PillPath)
 print('Progress fill  =', meters.ProgressFill.opts.Shape)
 print('Debug text     =', (meters.DebugText.opts.Text or ''):gsub('#CRLF#', ' / '))
 for i = 1, #writes do if writes[i]:find('WallAvg') then print('write:', writes[i]) end end
+-- playback buttons
+if os.getenv('MOCK_RIGHT') then
+  local function btns()
+    for _, k in ipairs({ 'BtnPrev', 'BtnPlay', 'BtnNext' }) do
+      local m = meters[k]
+      print(k, m.hidden and 'hidden' or 'shown', 'X=' .. tostring(m.opts.X), 'Y=' .. tostring(m.opts.Y),
+        'bg=' .. tostring(m.opts.Shape), 'icon=' .. tostring(m.opts.Shape2):sub(1, 60))
+    end
+  end
+  print('Right side =', VARS.RightPanel, ' Vis ' .. (meters.Vis.hidden and 'hidden' or 'shown'),
+    ' progress bar W=' .. tostring(meters.ProgressBg.opts.Shape):match('Rectangle 0,0,(%d+)'))
+  btns()
+  Hover('play'); Update(); flush()
+  print('after Hover(play):'); btns()
+  Hover(''); Update(); flush()
+
+  if os.getenv('MOCK_RIGHT') == 'combined' then
+    local function run(sec) for _ = 1, math.floor(sec * 60) do clock = clock + 1 / 60; Update(); flush() end end
+    local function st(tag)
+      print(string.format('  %-24s Vis=%s zone=%s buttons=%s', tag, meters.Vis.hidden and 'hidden' or 'shown',
+        meters.CtlZone.hidden and 'hidden' or 'shown', meters.BtnPlay.hidden and 'hidden' or 'shown'))
+    end
+    run(2.5); st('idle')
+    Hover('zone'); run(0.5); st('hover zone 0.5s')
+    Hover('next'); run(0.3); st('hover next')
+    Hover(''); run(0.8); st('left 0.8s ago')
+    run(1.5); st('left 2.3s ago')
+    Hover('zone'); run(0.4); Hover(''); run(2.0); st('re-hover then leave')
+    run(0.1)
+    local maxR, n = 0, 0
+    for i = 1, 8 do
+      local sh = meters.Vis.opts[i == 1 and 'Shape' or ('Shape' .. i)]
+      local x, w = tostring(sh):match('Rectangle (%d+),[%d%.]+,(%d+),')
+      if x and tonumber(w) > 1 then n = n + 1; maxR = math.max(maxR, tonumber(x) + tonumber(w)) end
+    end
+    print('  visualizer bars=' .. n .. ' width=' .. maxR .. 'px  (button area ' .. (tonumber(meters.CtlZone.opts.Shape:match('Rectangle 0,0,(%d+)')) - 12) .. 'px)')
+    print('  bar W=' .. tostring(meters.ProgressBg.opts.Shape):match('Rectangle 0,0,(%d+)'),
+      'Vis X=' .. tostring(meters.Vis.opts.X), 'zone X=' .. tostring(meters.CtlZone.opts.X))
+  end
+end
 os.exit(#errors == 0 and 0 or 1)

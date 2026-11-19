@@ -27,7 +27,7 @@ SLIM = {
     'FadeZone': '60', 'FocusPos': '38',
 }
 COMMON = {
-    'ShowProgress': '1', 'ShowVis': '1', 'FontFace': 'Segoe UI', 'FontWeight': '700',
+    'ShowProgress': '1', 'RightPanel': 'vis', 'CtlHold': '1500', 'FontFace': 'Segoe UI', 'FontWeight': '700',
     'LyricMode': 'paged', 'PageWords': '2', 'PillWords': '1', 'PillStyle': '0', 'PillPadY': '2',
     'CamSmooth': '450', 'PillSpeed': '110', 'LyricsOffset': '0', 'PositionUnit': '1',
     'FPS': '60', 'VisSensitivity': '35', 'Debug': '0',
@@ -151,12 +151,12 @@ FFTSize=1024
 FFTOverlap=512
 FFTAttack=40
 FFTDecay=220
-Bands=4
+Bands=8
 FreqMin=60
 FreqMax=9000
 Sensitivity=#VisSensitivity#
 ''')
-    for i in range(4):
+    for i in range(8):
         a('''[mBand%d]
 Measure=Plugin
 Plugin=AudioLevel
@@ -300,6 +300,58 @@ Shape=Rectangle 0,12,4,3,2 | Fill Color 200,170,255,230 | StrokeWidth 0
 Shape2=Rectangle 7,12,4,3,2 | Fill Color 200,170,255,230 | StrokeWidth 0
 Shape3=Rectangle 14,12,4,3,2 | Fill Color 200,170,255,230 | StrokeWidth 0
 Shape4=Rectangle 21,12,4,3,2 | Fill Color 200,170,255,230 | StrokeWidth 0
+Shape5=Rectangle 0,0,0.1,0.1,0 | Fill Color 0,0,0,0 | StrokeWidth 0
+Shape6=Rectangle 0,0,0.1,0.1,0 | Fill Color 0,0,0,0 | StrokeWidth 0
+Shape7=Rectangle 0,0,0.1,0.1,0 | Fill Color 0,0,0,0 | StrokeWidth 0
+Shape8=Rectangle 0,0,0.1,0.1,0 | Fill Color 0,0,0,0 | StrokeWidth 0
+
+; ---- playback buttons (slim layout; Right side = Controls in Settings > Layout) ----
+; hover area for the combined visualizer/controls panel
+[CtlZone]
+Meter=Shape
+Hidden=1
+X=0
+Y=0
+Shape=Rectangle 0,0,88,44 | Fill Color 255,255,255,1 | StrokeWidth 0
+SolidColor=0,0,0,1
+MouseOverAction=[!CommandMeasure mScript "Hover('zone')"]
+MouseLeaveAction=[!CommandMeasure mScript "Hover('')"]
+
+[BtnPrev]
+Meter=Shape
+Group=Ctl
+Hidden=1
+X=0
+Y=0
+Shape=Rectangle 0,0,26,26,8 | Fill Color 255,255,255,1 | StrokeWidth 0
+SolidColor=0,0,0,1
+LeftMouseUpAction=[!CommandMeasure mState "Previous"]
+MouseOverAction=[!CommandMeasure mScript "Hover('prev')"]
+MouseLeaveAction=[!CommandMeasure mScript "Hover('')"]
+
+[BtnPlay]
+Meter=Shape
+Group=Ctl
+Hidden=1
+X=0
+Y=0
+Shape=Rectangle 0,0,26,26,8 | Fill Color 255,255,255,1 | StrokeWidth 0
+SolidColor=0,0,0,1
+LeftMouseUpAction=[!CommandMeasure mState "PlayPause"]
+MouseOverAction=[!CommandMeasure mScript "Hover('play')"]
+MouseLeaveAction=[!CommandMeasure mScript "Hover('')"]
+
+[BtnNext]
+Meter=Shape
+Group=Ctl
+Hidden=1
+X=0
+Y=0
+Shape=Rectangle 0,0,26,26,8 | Fill Color 255,255,255,1 | StrokeWidth 0
+SolidColor=0,0,0,1
+LeftMouseUpAction=[!CommandMeasure mState "Next"]
+MouseOverAction=[!CommandMeasure mScript "Hover('next')"]
+MouseLeaveAction=[!CommandMeasure mScript "Hover('')"]
 
 ; ---- troubleshooting (Debug=1 in Settings > Motion) ----
 [DebugText]
@@ -603,7 +655,7 @@ INSTALL
 SETTINGS
   Right-click the skin > "Sonora Lyrics settings"  (or load SonoraLyrics\\Settings\\SonoraSettings.ini).
   Changes apply by themselves about a second after your last click.
-    Layout : presets (Classic / Slim), size, cover, visualizer, progress bar
+    Layout : presets (Classic / Slim), size, cover, right side (visualizer / controls / combined), progress bar
     Lyrics : lyric style (Paged = calm, default / Scrolling = the old continuous scroll),
              font, words per highlight, highlight position/shape, spacing, timing offset
     Colors : manual colors or the average color of your wallpaper
