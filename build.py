@@ -173,9 +173,10 @@ BandIdx=%d
 [mLyrics]
 Measure=WebParser
 URL=#LyricsURL#
-UserAgent=RainmeterLyrics (https://github.com/Elzu400/rainmeter-lyrics)
+UserAgent=RainmeterLyrics/5.0 (https://github.com/Elzu400/rainmeter-lyrics)
 RegExp=(?s)"syncedLyrics":"((?:[^"\\\\]|\\\\.)*)"
 StringIndex=1
+CodePage=65001
 UpdateRate=-1
 DynamicVariables=1
 Disabled=1
@@ -188,10 +189,11 @@ OnDownloadErrorAction=[!CommandMeasure mScript "OnFailed()"]
 [mSearch]
 Measure=WebParser
 URL=#LyricsSearchURL#
-UserAgent=RainmeterLyrics (https://github.com/Elzu400/rainmeter-lyrics)
+UserAgent=RainmeterLyrics/5.0 (https://github.com/Elzu400/rainmeter-lyrics)
 ; WebParser only hands back text that a RegExp captured: capture the whole answer
 RegExp=(?s)(.*)
 StringIndex=1
+CodePage=65001
 UpdateRate=-1
 DynamicVariables=1
 Disabled=1
@@ -208,6 +210,7 @@ UserAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, l
 ; WebParser only hands back text that a RegExp captured: capture the whole answer
 RegExp=(?s)(.*)
 StringIndex=1
+CodePage=65001
 UpdateRate=-1
 DynamicVariables=1
 Disabled=1
@@ -223,6 +226,7 @@ UserAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, l
 ; WebParser only hands back text that a RegExp captured: capture the whole answer
 RegExp=(?s)(.*)
 StringIndex=1
+CodePage=65001
 UpdateRate=-1
 DynamicVariables=1
 Disabled=1
@@ -238,6 +242,7 @@ UserAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, l
 ; WebParser only hands back text that a RegExp captured: capture the whole answer
 RegExp=(?s)(.*)
 StringIndex=1
+CodePage=65001
 UpdateRate=-1
 DynamicVariables=1
 Disabled=1
@@ -253,6 +258,7 @@ UserAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, l
 ; WebParser only hands back text that a RegExp captured: capture the whole answer
 RegExp=(?s)(.*)
 StringIndex=1
+CodePage=65001
 UpdateRate=-1
 DynamicVariables=1
 Disabled=1

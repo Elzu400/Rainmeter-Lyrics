@@ -67,7 +67,7 @@ local errors = {}
 local function err(msg) errors[#errors + 1] = msg; if #errors < 15 then io.stderr:write('ERROR: ' .. msg .. '\n') end end
 
 -- ---------- player simulation ----------
-local songT, playing = 0, true
+local songT, playing = tonumber(os.getenv('MOCK_START') or 0), true
 local title, artist = 'Midnight Drive', 'The Testers'
 local lyricsRaw = ''
 local searchRaw = ''
@@ -339,6 +339,13 @@ local function provResponse(m)
       .. '{"id":"222","product_from":"y","accesskey":"B/B+","singer":"' .. artist .. '","song":"' .. title .. '","duration":210000,"score":40}]}'
   elseif m == 'mKgL' then
     local lrc = SYNCED:gsub('\\n', '\n')
+    if os.getenv('MOCK_CJK') then
+      local L = { '[ti:test]\r', '[offset:0]\r', '[00:00.00]Title - Artist\r', '[00:00.00]Lyricist: someone\r' }
+      for i = 0, 40 do
+        L[#L + 1] = string.format('[%02d:%02d.%02d]\228\189\160\229\165\189\228\184\150\231\149\140\228\187\138\229\164\169\229\164\169\230\176\148\229\190\136\229\165\189\230\136\145\228\187\172\228\184\200\232\181\183\229\142\187\230\148\190\233\163\142\231\173\157 %d\r', math.floor(i * 4 / 60), (i * 4) % 60, 31, i)
+      end
+      lrc = table.concat(L, '\n')
+    end
     return '{"status":200,"content":"' .. b64enc('\239\187\191' .. lrc):gsub('/', '\\/') .. '","fmt":"lrc"}'
   elseif m == 'mNeS' then
     if SRC ~= 'netease' and SRC ~= 'yrc' then return '{"result":{"songs":[],"songCount":0},"code":200}' end
@@ -406,6 +413,9 @@ for f = 1, totalFrames + 200 do
     flush()
   end
 
+  if os.getenv('MOCK_TRACE') and f % 300 == 0 then
+    print(string.format('trace f=%d songT=%.1f %s', f, songT, ((meters.DebugText.opts.Text or ''):match('t:[%d%.]+ appear[^#]*') or '')))
+  end
   local cmds = bangCount - n0
   stats.cmds = stats.cmds + cmds
   stats.maxCmds = math.max(stats.maxCmds, cmds)

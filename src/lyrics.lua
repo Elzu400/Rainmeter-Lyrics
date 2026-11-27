@@ -53,11 +53,12 @@ local waiting, lastRaw = false, nil
 local curTitle, curArtist = nil, nil
 local seenSince, fetchPending, waitSince = 0, false, 0
 local trigF, trigM, updF, updM, enabledOnce = nil, 'mLyrics', nil, nil, {}
-local Q = { stage = 0, title = '', artist = '', dur = 0, src = '-', pick = '', order = {}, idx = 0, log = {} }   -- current lyrics request
+local Q = { alt = false, q = '', stage = 0, title = '', artist = '', dur = 0, src = '-', pick = '', order = {}, idx = 0, log = {} }   -- current lyrics request
 local nextProv                        -- moves on to the next lyrics provider (set below)
 
 -- player time
 local lastPos, lastClock, disp, firstTime, wasPlaying = -1, 0, 0, true, false
+local dbgPos, dbgEst, dbgErr, lyrFrames = 0, 0, nil, 0
 local lastProg = nil
 local curMode = nil                  -- true = lyric strip, false = title/artist
 
@@ -941,7 +942,7 @@ end
 
 local function lg(msg)
   Q.log[#Q.log + 1] = msg
-  if C.debug then SKIN:Bang('!Log', 'RainmeterLyrics: ' .. msg, 'Debug') end
+  if C.debug then SKIN:Bang('!Log', clean('RainmeterLyrics: ' .. msg), 'Debug') end
 end
 
 -- step "lrclib": exact lookup first (stage 1), then its search (stage 2)
@@ -979,9 +980,16 @@ local function startSearch()
   if t == '' then t = Q.title end
   local a = Q.artist:gsub('%s*[,&;/].*$', ''):gsub('%s+[Ff]e?a?t%.?%s+.*$', '')
   if a == '' then a = Q.artist end
-  SKIN:Bang('!SetVariable', 'LyricsSearchURL',
-    'https://lrclib.net/api/search?track_name=' .. urlenc(t) .. '&artist_name=' .. urlenc(a))
+  -- free-text search like the LRCLIB website (the strict track_name + artist_name form misses
+  -- songs whose names differ a little); the second try uses the title alone
+  Q.alt = false
+  Q.q = t
+  SKIN:Bang('!SetVariable', 'LyricsSearchURL', 'https://lrclib.net/api/search?q=' .. urlenc(t .. ' ' .. a))
   trigF, trigM = frame + 3, 'mSearch'
+end
+
+local function snip(raw)
+  return (raw:sub(1, 80):gsub('%c', ' '))
 end
 
 -- choose the best synced result of a search response (a JSON array); returns raw lyrics or nil
@@ -1100,7 +1108,7 @@ end
 function OnFetched()
   if not (waiting and Q.stage == 1) then return end
   local raw = measureText('mLyrics')
-  if not accept(raw, 'lrclib') then lg('lrclib exact: no synced lyrics (' .. #raw .. ' bytes)'); startSearch() end
+  if not accept(raw, 'lrclib') then lg('lrclib exact: no synced lyrics (' .. #raw .. ' bytes) ' .. snip(raw)); startSearch() end
 end
 
 function OnSearched()
@@ -1108,8 +1116,14 @@ function OnSearched()
   local raw = measureText('mSearch')
   local best = pickBest(raw)
   if not (best and accept(best, 'lrclib')) then
-    lg('lrclib search: no match (' .. #raw .. ' bytes)')
-    nextProv()
+    lg('lrclib search' .. (Q.alt and ' (title only)' or '') .. ': no match (' .. #raw .. ' bytes) ' .. snip(raw))
+    if not Q.alt and Q.q and Q.q ~= '' then
+      Q.alt = true
+      SKIN:Bang('!SetVariable', 'LyricsSearchURL', 'https://lrclib.net/api/search?track_name=' .. urlenc(Q.q))
+      trigF, trigM = frame + 3, 'mSearch'
+    else
+      nextProv()
+    end
   end
 end
 
@@ -1130,7 +1144,7 @@ function OnKgSearched()
     if sc and (not bestScore or sc > bestScore) then bestId, bestKey, bestScore = id, key, sc end
   end
   if not bestId then
-    lg('kugou search: no match (' .. #raw .. ' bytes, ' .. #splitObjs(raw, 'candidates') .. ' candidates)')
+    lg('kugou search: no match (' .. #raw .. ' bytes, ' .. #splitObjs(raw, 'candidates') .. ' candidates) ' .. snip(raw))
     nextProv()
     return
   end
@@ -1164,7 +1178,7 @@ function OnNeSearched()
     if sc and (not bestScore or sc > bestScore) then bestId, bestScore = id, sc end
   end
   if not bestId then
-    lg('netease search: no match (' .. #nraw .. ' bytes, ' .. #songs .. ' songs)')
+    lg('netease search: no match (' .. #nraw .. ' bytes, ' .. #songs .. ' songs) ' .. snip(nraw))
     nextProv()
     return
   end
@@ -1703,12 +1717,15 @@ local function progressTick(cmd)
 end
 
 local function debugTick(now, cmd)
+  local age = now - lastClock
   if C.debug and now - lastDbg > 0.5 then
     lastDbg = now
     local w1 = segM[1] and segM[1]:GetW() or -1
     local parts = {
       string.format('words:%d groups:%d mode:%s wait:%s src:%s %s', nw, #gT0, tostring(curMode), tostring(waiting), Q.src, Q.pick),
       string.format('t:%.1f appear:%.2f cam:%.0f style:%s page:%s', disp, appear, cam or -1, C.mode, tostring(curPage)),
+      string.format('player pos:%.1f est:%.1f since-update:%.1fs playing:%s lyric-frames:%d', dbgPos, dbgEst, age, tostring(isPlaying()), lyrFrames),
+      'error: ' .. tostring(dbgErr),
       string.format('w1:%s pill:%s', tostring(w1), tostring(lastPill)),
       'current: ' .. tostring(dbgCur),
       'wall: ' .. (wall and (wall[1] .. ',' .. wall[2] .. ',' .. wall[3]) or 'none'),
@@ -1765,12 +1782,15 @@ function Update()
 
   -- lyrics
   if curMode and nw > 0 then
-    if C.mode == 'legacy' then
-      lyricFrame(now, dt, disp + C.offset, cmd)
-    else
-      lyricFramePaged(now, dt, disp + C.offset, cmd)
+    -- a Lua error here would otherwise stop the lyrics for good; keep going and report it
+    local ok, e = pcall(C.mode == 'legacy' and lyricFrame or lyricFramePaged, now, dt, disp + C.offset, cmd)
+    lyrFrames = lyrFrames + 1
+    if not ok and e ~= dbgErr then
+      dbgErr = e
+      if C.debug then SKIN:Bang('!Log', clean('RainmeterLyrics: lyric frame error: ' .. tostring(e)), 'Error') end
     end
   end
+  dbgPos, dbgEst = pos, est
 
   debugTick(now, cmd)
 
