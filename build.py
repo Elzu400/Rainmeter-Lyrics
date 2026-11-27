@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Elzu400
 # SPDX-License-Identifier: GPL-3.0-or-later (see LICENSE)
 """Builds the RainmeterLyrics skin folder (and a test tree with ASCII Lua) from templates."""
-import os, shutil, sys, zipfile
+import os, re, shutil, sys, zipfile
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, 'src')
@@ -439,10 +439,13 @@ UpdateDivider=3
     return '\n'.join(o)
 
 
+SETTINGS_ROWS = 12
+
+
 # ---------------------------------------------------------------- settings skin ini
 def settings_ini():
-    W, H = 460, 486
-    ROWS = 11
+    W, H = 460, 517
+    ROWS = SETTINGS_ROWS
     Y0, DY = 96, 31
     o = []
     a = o.append
@@ -759,6 +762,13 @@ def build_tree(base, utf16):
         lyrics = f.read()
     with open(os.path.join(SRC, 'settings.lua.tpl'), encoding='utf-8') as f:
         settings = f.read().replace('--@@DATA@@', lua_data())
+
+    # every settings tab must fit the rows the settings skin has (extra rows are silently dropped)
+    tabs = re.split(r'(?m)^  \{ -- ', settings.split('local DEFS = {', 1)[1].split('\n}\n', 1)[0])[1:]
+    for t in tabs:
+        n = len(re.findall(r'(?m)^    \{ label = ', t))
+        if n > SETTINGS_ROWS:
+            raise SystemExit('settings tab "%s" has %d rows, the settings skin only has %d' % (t.split()[0], n, SETTINGS_ROWS))
 
     for name, text in (('lyrics.lua', lyrics), ('settings.lua', settings)):
         if utf16:

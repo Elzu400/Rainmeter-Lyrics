@@ -7,7 +7,7 @@
 
 --@@DATA@@
 
-local ROWS = 11
+local ROWS = 12                      -- must match SETTINGS_ROWS in build.py
 local floor, max, min = math.floor, math.max, math.min
 
 local cfg, written = {}, {}
