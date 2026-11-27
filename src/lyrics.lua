@@ -70,7 +70,7 @@ local vis = { h = { 0, 0, 0, 0, 0, 0, 0, 0 }, key = nil }
 
 -- playback buttons (slim layout only); each is a Shape meter that the ini defines
 local BTN = { 'BtnPrev', 'BtnPlay', 'BtnNext' }
-local ctl = { key = nil, hover = nil, a = 0, seen = -1e9, on = nil }   -- a: 0 = hidden .. 1 = fully shown
+local ctl = { key = nil, hover = nil, a = 0, seen = -1e9, on = nil, coverSeen = -1e9 }   -- a: 0 = hidden .. 1 = fully shown
 
 -- debug
 local lastDbg, dbgCur = 0, '-'
@@ -329,9 +329,16 @@ local function applyLayout()
     b[#b + 1] = string.format('[!SetOption CoverMask Shape "Rectangle 0,0,%d,%d,%d | Fill Color 0,0,0,255 | StrokeWidth 0"]',
       C.coverSize, C.coverSize, C.coverRadius)
     b[#b + 1] = string.format('[!SetOption Cover W %d][!SetOption Cover H %d]', C.coverSize, C.coverSize)
+    -- hover area and button of the quick settings (the button itself fades in, see ctl.drawCover)
+    b[#b + 1] = string.format('[!SetOption CoverZone X %d][!SetOption CoverZone Y %d][!SetOption CoverBtn X %d][!SetOption CoverBtn Y %d]',
+      L.coverX, L.coverY, L.coverX, L.coverY)
+    b[#b + 1] = string.format('[!SetOption CoverZone Shape "Rectangle 0,0,%d,%d,%d | Fill Color 255,255,255,1 | StrokeWidth 0"]',
+      C.coverSize, C.coverSize, C.coverRadius)
+    b[#b + 1] = '[!ShowMeter CoverZone]'
   else
-    b[#b + 1] = '[!HideMeter CoverMask][!HideMeter Cover]'
+    b[#b + 1] = '[!HideMeter CoverMask][!HideMeter Cover][!HideMeter CoverZone][!HideMeter CoverBtn]'
   end
+  ctl.con, ctl.ckey, ctl.ca = nil, nil, 0
 
   -- title / artist fallback
   local regionBottom = C.showProg and L.progY or C.H
@@ -824,6 +831,48 @@ end
 function Hover(name)
   if name == nil or name == '' then ctl.hover = nil else ctl.hover = name end
   ctl.seen = os.clock()
+end
+
+-- the cover's quick-settings button: same fade and hide delay as the playback buttons
+function HoverCover(on)
+  ctl.cover = (on == 1 or on == '1' or on == true)
+  ctl.coverSeen = os.clock()
+end
+
+function ctl.stepCover(now, dt)
+  if ctl.cover then ctl.coverSeen = now end
+  local target = (L.cover and (ctl.cover or (now - ctl.coverSeen) < C.ctlHold)) and 1 or 0
+  local a = ctl.ca or 0
+  local step = dt / 0.18
+  if a < target then a = min(target, a + step)
+  elseif a > target then a = max(target, a - step) end
+  ctl.ca = a
+end
+
+function ctl.drawCover(cmd)
+  local a = ctl.ca or 0
+  local want = a > 0.01
+  if ctl.con ~= want then
+    ctl.con = want
+    cmd[#cmd + 1] = (want and '[!ShowMeter CoverBtn]' or '[!HideMeter CoverBtn]')
+  end
+  if not want then ctl.ckey = nil; return end
+  local key = K.textStr .. round(a * 40)
+  if key == ctl.ckey then return end
+  ctl.ckey = key
+  local s = C.coverSize
+  local r = C.coverRadius
+  local c = s / 2
+  local lw = max(6, s * 0.46)                    -- icon: two small sliders
+  local gap = max(3, s * 0.13)
+  local ia = round(235 * a)
+  local fill = ' | Fill Color ' .. K.textStr .. ',' .. ia .. ' | StrokeWidth 0'
+  cmd[#cmd + 1] = string.format('[!SetOption CoverBtn Shape "Rectangle 0,0,%d,%d,%d | Fill Color 12,10,20,%d | StrokeWidth 0"]',
+    s, s, r, round(150 * a))
+  cmd[#cmd + 1] = string.format('[!SetOption CoverBtn Shape2 "Rectangle %.1f,%.1f,%.1f,2,1%s"]', c - lw / 2, c - gap - 1, lw, fill)
+  cmd[#cmd + 1] = string.format('[!SetOption CoverBtn Shape3 "Ellipse %.1f,%.1f,2.4%s"]', c - lw / 2 + lw * 0.65, c - gap, fill)
+  cmd[#cmd + 1] = string.format('[!SetOption CoverBtn Shape4 "Rectangle %.1f,%.1f,%.1f,2,1%s"]', c - lw / 2, c + gap - 1, lw, fill)
+  cmd[#cmd + 1] = string.format('[!SetOption CoverBtn Shape5 "Ellipse %.1f,%.1f,2.4%s"]', c - lw / 2 + lw * 0.3, c + gap, fill)
 end
 
 -- combined mode: controls fade in while hovered and fade out again shortly after the mouse leaves
@@ -1841,13 +1890,17 @@ function Update()
 
   -- visualizer
   stepCtl(now, dt)
+  ctl.stepCover(now, dt)
   updateVis(dt, cmd, playing)
   drawCtl(cmd, playing)
+  ctl.drawCover(cmd)
 
   -- lyrics
   if curMode and nw > 0 then
     -- a Lua error here would otherwise stop the lyrics for good; keep going and report it
-    local ok, e = pcall(C.mode == 'legacy' and lyricFrame or lyricFramePaged, now, dt, disp + C.offset, cmd)
+    local mo = SKIN:GetMeasure('mOffsets')            -- per-song offset (offsets.lua)
+    local ok, e = pcall(C.mode == 'legacy' and lyricFrame or lyricFramePaged, now, dt,
+      disp + C.offset + (mo and mo:GetValue() or 0), cmd)
     lyrFrames = lyrFrames + 1
     if not ok and e ~= dbgErr then
       dbgErr = e

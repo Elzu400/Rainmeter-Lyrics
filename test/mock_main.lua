@@ -109,6 +109,7 @@ local MS = {
   mKgS = mk(function() return provRaw.mKgS or '' end, function() return 0 end),
   mKgL = mk(function() return provRaw.mKgL or '' end, function() return 0 end),
   mWall = mk(function() return '40,90,160' end, function() return 0 end),
+  mOffsets = mk(function() return '' end, function() return tonumber(os.getenv('MOCK_SONGOFF') or 0) end),   -- per-song offset
 }
 for i = 1, 8 do MS['mBand' .. i] = mk(function() return '' end, function() return band[i] end) end
 
@@ -573,5 +574,20 @@ if os.getenv('MOCK_RIGHT') then
     print('  bar W=' .. tostring(meters.ProgressBg.opts.Shape):match('Rectangle 0,0,(%d+)'),
       'Vis X=' .. tostring(meters.Vis.opts.X), 'zone X=' .. tostring(meters.CtlZone.opts.X))
   end
+end
+-- cover button (quick settings): fades in on hover and out after the hide delay, like the controls
+if os.getenv('MOCK_COVER') then
+  local function run(sec) for _ = 1, math.floor(sec * 60) do clock = clock + 1 / 60; Update(); flush() end end
+  local function st(tag)
+    local m = meters.CoverBtn
+    local a = tostring(m.opts.Shape2 or ''):match('Fill Color [%d,]+,(%d+)')
+    print(string.format('  %-26s CoverBtn=%s alpha=%s zone=%s', tag, m.hidden and 'hidden' or 'shown', tostring(a),
+      meters.CoverZone.hidden and 'hidden' or 'shown'))
+  end
+  print('Cover button (hide delay ' .. tostring(VARS.CtlHold) .. ' ms):')
+  run(1.0); st('idle')
+  HoverCover(1); run(0.05); st('hover 0.05s'); run(0.3); st('hover 0.35s')
+  HoverCover(0); run(0.3); st('left 0.3s ago'); run(0.6); st('left 0.9s ago'); run(1.2); st('left 2.1s ago')
+  print('  CoverBtn size/pos:', tostring(meters.CoverBtn.opts.Shape):match('Rectangle [%d,]+'), 'X=' .. tostring(meters.CoverBtn.opts.X), 'Y=' .. tostring(meters.CoverBtn.opts.Y))
 end
 os.exit(#errors == 0 and 0 or 1)

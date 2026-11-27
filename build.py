@@ -100,6 +100,7 @@ LyricsSearchURL=https://lrclib.net/api/search
 KgSearchURL=https://lyrics.kugou.com/search
 KgLyricsURL=https://lyrics.kugou.com/download
 DimColor=175,175,195,165
+QuickConfig=RainmeterLyrics\\Quick
 
 ; ====================== MEASURES ======================
 
@@ -245,6 +246,11 @@ OutputType=ANSI
 Timeout=20000
 FinishAction=[!CommandMeasure mScript "OnWallpaper()"]
 
+; per-song timing offsets (SongOffsets.txt); its value is the offset of the song that is playing
+[mOffsets]
+Measure=Script
+ScriptFile=#@#offsets.lua
+
 ; ---- everything visual is driven from here ----
 [mScript]
 Measure=Script
@@ -274,6 +280,26 @@ H=48
 PreserveAspectRatio=2
 SolidColor=40,35,55,80
 DynamicVariables=1
+
+; hover area over the cover; the button (quick settings) fades in on it, see lyrics.lua
+[CoverZone]
+Meter=Shape
+X=13
+Y=13
+Shape=Rectangle 0,0,48,48,10 | Fill Color 255,255,255,1 | StrokeWidth 0
+MouseOverAction=[!CommandMeasure mScript "HoverCover(1)"]
+MouseLeaveAction=[!CommandMeasure mScript "HoverCover(0)"]
+LeftMouseUpAction=[!CommandMeasure mOffsets "Open()"]
+
+[CoverBtn]
+Meter=Shape
+X=13
+Y=13
+Hidden=1
+Shape=Rectangle 0,0,48,48,10 | Fill Color 12,10,20,150 | StrokeWidth 0
+MouseOverAction=[!CommandMeasure mScript "HoverCover(1)"]
+MouseLeaveAction=[!CommandMeasure mScript "HoverCover(0)"]
+LeftMouseUpAction=[!CommandMeasure mOffsets "Open()"]
 
 ; ---- fallback: title + artist when no synced lyrics are available ----
 [TitleText]
@@ -700,8 +726,8 @@ try {
 exit 1
 '''
 
-README = '''SONORA LYRICS 5.0
-=================
+README = '''RAINMETER LYRICS 5.0
+====================
 
 INSTALL
   1. Unload any older "Rainmeter Lyrics" skin in the Rainmeter manager.
@@ -730,8 +756,239 @@ FILES
   @Resources\\Settings.inc   all settings (written by the settings skin)
   @Resources\\lyrics.lua     the lyric strip, highlight, progress bar, visualizer
   @Resources\\settings.lua   the settings window logic
+  @Resources\\offsets.lua    per-song timing offsets (saved in SongOffsets.txt)
+  @Resources\\quick.lua      the quick settings window (click the album cover)
   @Resources\\wallcolor.ps1  reads the average wallpaper color (PowerShell, no install needed)
 '''
+
+
+QW, QH = 360, 262
+QX0, QSPAN = 28, 304
+
+
+def quick_ini():
+    out = []
+    a = out.append
+    a('''[Rainmeter]
+Update=100
+AccurateText=1
+DynamicWindowSize=1
+
+[Metadata]
+Name=Rainmeter Lyrics Quick settings
+Author=Elzu400
+Version=5.0
+Information=Quick settings for the Rainmeter Lyrics skin: timing offset of the current song.
+
+[Variables]
+MainConfig=RainmeterLyrics\\Lyrics
+SettingsConfig=RainmeterLyrics\\Settings
+TxtColor=232,232,242
+DimTxt=150,150,170
+QOffText=0
+
+[mQ]
+Measure=Script
+ScriptFile=#@#quick.lua
+
+[mInOff]
+Measure=Plugin
+Plugin=InputText
+X=178
+Y=190
+W=158
+H=30
+FontFace=Segoe UI
+FontSize=13
+FontColor=255,255,255
+SolidColor=40,36,56
+DefaultValue=#QOffText#
+DynamicVariables=1
+Command1=[!CommandMeasure mQ "Typed('$UserInput$')"]
+''')
+    a('''[Bg]
+Meter=Shape
+Shape=Rectangle 0,0,%d,%d,16 | Fill Color 24,22,32,248 | StrokeWidth 1 | Stroke Color 255,255,255,25
+
+[Title]
+Meter=String
+X=22
+Y=20
+FontFace=Segoe UI
+FontSize=13
+FontWeight=700
+FontColor=#TxtColor#
+AntiAlias=1
+Text=Quick settings
+
+[CloseBtn]
+Meter=Shape
+X=%d
+Y=14
+Shape=Rectangle 0,0,26,26,8 | Fill Color 255,255,255,18 | StrokeWidth 0
+LeftMouseUpAction=[!DeactivateConfig]
+
+[CloseTxt]
+Meter=String
+X=%d
+Y=28
+FontFace=Segoe UI
+FontSize=11
+FontColor=#TxtColor#
+StringAlign=CenterCenter
+AntiAlias=1
+Text=x
+
+[Sec]
+Meter=String
+X=22
+Y=60
+FontFace=Segoe UI
+FontSize=10
+FontWeight=700
+FontColor=#DimTxt#
+AntiAlias=1
+Text=LYRICS TIMING
+
+[Song]
+Meter=String
+X=22
+Y=80
+W=%d
+ClipString=1
+FontFace=Segoe UI
+FontSize=11
+FontColor=#TxtColor#
+AntiAlias=1
+Text=
+
+[Hint]
+Meter=String
+X=22
+Y=102
+W=%d
+ClipString=1
+FontFace=Segoe UI
+FontSize=9
+FontColor=#DimTxt#
+AntiAlias=1
+Text=Offset for this song only. + shows lyrics sooner, - later.
+
+; the slider is drawn by quick.lua; the zones below it are one per 0.1 s
+[Slide]
+Meter=Shape
+X=0
+Y=128
+Shape=Rectangle %d,15,%d,4,2 | Fill Color 255,255,255,40 | StrokeWidth 0
+
+[LblM]
+Meter=String
+X=%d
+Y=164
+FontFace=Segoe UI
+FontSize=9
+FontColor=#DimTxt#
+StringAlign=Center
+AntiAlias=1
+Text=-2 s
+
+[LblZ]
+Meter=String
+X=%d
+Y=164
+FontFace=Segoe UI
+FontSize=9
+FontColor=#DimTxt#
+StringAlign=Center
+AntiAlias=1
+Text=0
+
+[LblP]
+Meter=String
+X=%d
+Y=164
+FontFace=Segoe UI
+FontSize=9
+FontColor=#DimTxt#
+StringAlign=Center
+AntiAlias=1
+Text=+2 s
+''' % (QW, QH, QW - 38, QW - 25, QW - 44, QW - 44, QX0, QSPAN, QX0, QX0 + QSPAN // 2, QX0 + QSPAN))
+    for i in range(41):
+        x = int(round(QX0 + QSPAN / 40.0 * i - QSPAN / 80.0))
+        a('''[Z%d]
+Meter=Shape
+X=%d
+Y=128
+Shape=Rectangle 0,0,%d,34 | Fill Color 255,255,255,1 | StrokeWidth 0
+LeftMouseDownAction=[!CommandMeasure mQ "Down(%d)"]
+LeftMouseUpAction=[!CommandMeasure mQ "Up()"]
+MouseOverAction=[!CommandMeasure mQ "Over(%d)"]
+MouseLeaveAction=[!CommandMeasure mQ "Leave()"]
+''' % (i, x, int(QSPAN / 40.0) + 1, i, i))
+    a('''[LblOff]
+Meter=String
+X=22
+Y=205
+FontFace=Segoe UI
+FontSize=10
+FontColor=#TxtColor#
+StringAlign=LeftCenter
+AntiAlias=1
+Text=Exact offset
+
+[Bv]
+Meter=Shape
+X=178
+Y=190
+Shape=Rectangle 0,0,158,30,8 | Fill Color 255,255,255,16 | StrokeWidth 0
+LeftMouseUpAction=[!CommandMeasure mQ "Edit()"]
+
+[V]
+Meter=String
+X=257
+Y=205
+FontFace=Segoe UI
+FontSize=11
+FontColor=#TxtColor#
+StringAlign=CenterCenter
+AntiAlias=1
+LeftMouseUpAction=[!CommandMeasure mQ "Edit()"]
+Text=0 s
+
+[Status]
+Meter=String
+X=22
+Y=229
+W=%d
+ClipString=1
+FontFace=Segoe UI
+FontSize=9
+FontColor=#DimTxt#
+AntiAlias=1
+Text=
+
+[BtnFull]
+Meter=Shape
+X=%d
+Y=222
+Shape=Rectangle 0,0,128,28,8 | Fill Color 255,255,255,18 | StrokeWidth 0
+LeftMouseUpAction=[!CommandMeasure mQ "OpenSettings()"]
+
+[BtnFullT]
+Meter=String
+X=%d
+Y=236
+FontFace=Segoe UI
+FontSize=10
+FontColor=#TxtColor#
+StringAlign=CenterCenter
+AntiAlias=1
+LeftMouseUpAction=[!CommandMeasure mQ "OpenSettings()"]
+Text=Full settings
+''' % (QW - 190, QW - 150, QW - 150 + 64))
+    return '\n'.join(out)
+
 
 
 def write(path, text, encoding='utf-8'):
@@ -758,7 +1015,11 @@ def build_tree(base, utf16):
         if n > SETTINGS_ROWS:
             raise SystemExit('settings tab "%s" has %d rows, the settings skin only has %d' % (t.split()[0], n, SETTINGS_ROWS))
 
-    for name, text in (('lyrics.lua', lyrics), ('settings.lua', settings)):
+    extra = []
+    for name in ('offsets.lua', 'quick.lua'):
+        with open(os.path.join(SRC, name), encoding='utf-8') as f:
+            extra.append((name, f.read()))
+    for name, text in (('lyrics.lua', lyrics), ('settings.lua', settings)) + tuple(extra):
         if utf16:
             text.encode('ascii')             # sources must stay ASCII
         write(os.path.join(res, name), text, enc)
@@ -769,6 +1030,7 @@ def build_tree(base, utf16):
         shutil.copyfile(lic, os.path.join(skin, 'LICENSE.txt'))
     write(os.path.join(skin, 'Lyrics', 'RainmeterLyrics.ini'), main_ini())
     write(os.path.join(skin, 'Settings', 'RainmeterLyricsSettings.ini'), settings_ini())
+    write(os.path.join(skin, 'Quick', 'RainmeterLyricsQuick.ini'), quick_ini())
     write(os.path.join(skin, 'README.txt'), README)
     for root, _, files in os.walk(skin):
         for fn in files:

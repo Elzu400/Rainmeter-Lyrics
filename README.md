@@ -19,6 +19,12 @@ current lyric line, a progress bar and a small 4-band audio visualizer.
   shows it straight away and looks for a word-synced version in the background, swapping it in
   if one is found. A swap only happens for the same artist and a similar number of lines, so a
   same-named song by someone else is ignored. Otherwise (and for KuGou) the words are spread over each line automatically.
+- **Quick settings and per-song timing:** hover the album cover and a small button fades in
+  (same fade and hide delay as the playback buttons). Click it for a menu with a timing slider
+  for the current song (-2 to +2 s, snapping to 0.1 s) and a box for any value (like `-1` or `3.4`,
+  no limit). The offset is saved per song in `@Resources\SongOffsets.txt` and used again the next
+  time that song plays. It adds to the global timing offset in Settings > Lyrics. The menu also has
+  a shortcut to the full settings. More quick settings will live there later.
 - **Testing the lyric sources:** in Settings > Lyrics, "Lyric sources (testing)" sets the
   order, or limits the skin to one source (e.g. "KuGou only"). Turn on Settings > Motion >
   "Debug overlay" and the overlay lists, per song, what each source answered: request failed,
@@ -102,7 +108,8 @@ python build.py
 texlua test/mock_main.lua test_tree classic 90
 texlua test/mock_main.lua test_tree slim 90
 texlua test/mock_settings.lua test_tree
-python3 test/check_lua51.py test_tree/RainmeterLyrics/@Resources/lyrics.lua test_tree/RainmeterLyrics/@Resources/settings.lua
+texlua test/mock_offsets.lua test_tree
+python3 test/check_lua51.py test_tree/RainmeterLyrics/@Resources/*.lua
 ```
 
 The last command checks the limits of Lua 5.1, the version Rainmeter embeds (for example at most 60
