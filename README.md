@@ -17,6 +17,12 @@ current lyric line, a progress bar and a small 4-band audio visualizer.
   NetEase lyrics that carry word-by-word timing make the highlight follow the real words
   (other sources are spread over each line automatically). Lyrics that include `<mm:ss.xx>`
   word tags are handled the same way.
+- **Testing the lyric sources:** in Settings > Lyrics, "Lyric sources (testing)" sets the
+  order, or limits the skin to one source (e.g. "KuGou only"). Turn on Settings > Motion >
+  "Debug overlay" and the overlay lists, per song, what each source answered: request failed,
+  answered with no match (and how many bytes / results came back), or lyrics loaded. The same
+  lines go to Rainmeter's log. Set a source to "only" and play a song that LRCLIB has: if lyrics
+  appear, that source works.
 - **Paged lyric style (default):** one line stays still while a highlight glides across
   its words. Long lines shift only as much as needed; lines cross-fade into each other.
   Calm, with no constant scrolling.

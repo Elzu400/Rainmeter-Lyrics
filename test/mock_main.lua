@@ -27,6 +27,7 @@ local PRESETS = {
 for k, v in pairs(PRESETS[preset] or {}) do VARS[k] = v end
 if os.getenv('MOCK_WORDS') then VARS.PillWords = os.getenv('MOCK_WORDS') end
 if os.getenv('MOCK_DEBUG') then VARS.Debug = '1' end
+if os.getenv('MOCK_ORDER') then VARS.LyricsOrder = os.getenv('MOCK_ORDER') end
 if os.getenv('MOCK_WALL') then VARS.ColorMode = 'wallpaper' end
 if os.getenv('MOCK_STYLE') then VARS.PillStyle = os.getenv('MOCK_STYLE') end
 if os.getenv('MOCK_RIGHT') then VARS.RightPanel = os.getenv('MOCK_RIGHT') end
@@ -160,6 +161,7 @@ end
 
 local pendingFetch, pendingWall, pendingSearch = nil, nil, nil
 local pendingProv = {}
+logs = {}
 local PROV = { mKgS = 'OnKgSearched', mKgL = 'OnKgLyrics', mNeS = 'OnNeSearched', mNeL = 'OnNeLyrics' }
 local PROV_FAIL = { mKgS = 'OnKgFailed', mKgL = 'OnKgFailed', mNeS = 'OnNeFailed', mNeL = 'OnNeFailed' }
 local frame = 0
@@ -198,6 +200,8 @@ local function runBang(cmd)
     elseif PROV[t[2]] and t[3] == 'Update' then pendingProv[#pendingProv + 1] = { m = t[2], at = frame + 22 }
     elseif t[2] == 'mWall' and t[3] == 'Run' then pendingWall = frame + 10
     else err('unexpected CommandMeasure ' .. cmd) end
+  elseif b == '!Log' then
+    logs[#logs + 1] = t[2]
   elseif b == '!WriteKeyValue' then
     writes[#writes + 1] = cmd
   else
@@ -501,6 +505,7 @@ print('TitleText Text =', meters.TitleText.opts.Text)
 print('Pill Shape     =', meters.Pill.opts.Shape)
 print('Pill Path      =', meters.Pill.opts.PillPath)
 print('Progress fill  =', meters.ProgressFill.opts.Shape)
+for _, l in ipairs(logs) do print('log: ' .. l) end
 print('Debug text     =', (meters.DebugText.opts.Text or ''):gsub('#CRLF#', ' / '))
 for i = 1, #writes do if writes[i]:find('WallAvg') then print('write:', writes[i]) end end
 -- playback buttons

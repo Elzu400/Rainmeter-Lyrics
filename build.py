@@ -30,7 +30,7 @@ COMMON = {
     'ShowProgress': '1', 'RightPanel': 'combined', 'CtlHold': '500', 'FontFace': 'Segoe UI', 'FontWeight': '700',
     'LyricMode': 'paged', 'PageWords': '1', 'PillWords': '1', 'PillStyle': '1', 'PillPadY': '2',
     'CamSmooth': '250', 'PillSpeed': '100', 'LyricsOffset': '0', 'PositionUnit': '1',
-    'FPS': '60', 'VisSensitivity': '50', 'Debug': '0',
+    'FPS': '60', 'VisSensitivity': '50', 'Debug': '0', 'LyricsOrder': 'lrclib,kugou,netease',
     'ColorMode': 'manual', 'BgColor': '20,18,28', 'BgAlpha': '166', 'TextColor': '255,255,255',
     'AccentColor': '255,100,160', 'PillAlpha': '107',
     'WallMinSat': '45', 'WallTintBg': '1', 'WallRefreshMin': '0',

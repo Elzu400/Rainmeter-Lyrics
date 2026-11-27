@@ -66,6 +66,14 @@ local DEFS = {
     { label = 'Word spacing', key = 'WordSpacing', kind = 'num', min = 2, max = 20, step = 1, unit = ' px' },
     { label = 'Edge fade', key = 'FadeZone', kind = 'num', min = 0, max = 150, step = 5, unit = ' px' },
     { label = 'Lyrics timing offset', key = 'LyricsOffset', kind = 'num', min = -5, max = 5, step = 0.1, unit = ' s' },
+    { label = 'Lyric sources (testing)', key = 'LyricsOrder', kind = 'choice',
+      choices = {
+        { label = 'LRCLIB > KuGou > NetEase', value = 'lrclib,kugou,netease' },
+        { label = 'KuGou > NetEase > LRCLIB', value = 'kugou,netease,lrclib' },
+        { label = 'NetEase > KuGou > LRCLIB', value = 'netease,kugou,lrclib' },
+        { label = 'LRCLIB only', value = 'lrclib' },
+        { label = 'KuGou only', value = 'kugou' },
+        { label = 'NetEase only', value = 'netease' } } },
   },
   { -- Colors
     { label = 'Color source', key = 'ColorMode', kind = 'choice',

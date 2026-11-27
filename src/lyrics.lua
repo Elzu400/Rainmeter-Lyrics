@@ -53,7 +53,8 @@ local waiting, lastRaw = false, nil
 local curTitle, curArtist = nil, nil
 local seenSince, fetchPending, waitSince = 0, false, 0
 local trigF, trigM, updF, updM, enabledOnce = nil, 'mLyrics', nil, nil, {}
-local Q = { stage = 0, title = '', artist = '', dur = 0, src = '-', pick = '' }   -- current lyrics request
+local Q = { stage = 0, title = '', artist = '', dur = 0, src = '-', pick = '', order = {}, idx = 0, log = {} }   -- current lyrics request
+local nextProv                        -- moves on to the next lyrics provider (set below)
 
 -- player time
 local lastPos, lastClock, disp, firstTime, wasPlaying = -1, 0, 0, true, false
@@ -224,6 +225,7 @@ local function loadConfig()
   C.wallTint    = num('WallTintBg', 1) ~= 0
   C.wallEvery   = num('WallRefreshMin', 0) * 60
   C.debug       = num('Debug', 0) ~= 0
+  C.order       = var('LyricsOrder', 'lrclib,kugou,netease')
   C.estChar     = C.fontSize * 96 / 72 * 0.58   -- rough px per character until measured
 
   local r, g, b = tostring(var('WallAvg', '')):match('^(%d+),(%d+),(%d+)$')
@@ -937,18 +939,35 @@ local function matchScore(name, who, dur)
   return score
 end
 
-local function fetch(title, artist)
+local function lg(msg)
+  Q.log[#Q.log + 1] = msg
+  if C.debug then SKIN:Bang('!Log', 'RainmeterLyrics: ' .. msg, 'Debug') end
+end
+
+-- step "lrclib": exact lookup first (stage 1), then its search (stage 2)
+local function startGet()
+  local title, artist = Q.title, Q.artist
   local t = (title:gsub('%s*[%(%[].-[%)%]]', ''))
   t = (t:gsub('%s+%-%s+[Rr]emaster.*$', ''))
   if t == '' then t = title end
   local url = 'https://lrclib.net/api/get?artist_name=' .. urlenc(artist)
               .. '&track_name=' .. urlenc(t)
-  Q.stage, Q.title, Q.artist, Q.src, Q.pick = 1, title, artist, '-', ''
-  Q.dur = readTime(mDuration)
+  Q.stage = 1
   -- Set the URL now, trigger the download a few frames later so the measure has re-read
   -- its dynamic URL (starting it in the same instant used the old one).
   SKIN:Bang('!SetVariable', 'LyricsURL', url)
   trigF, trigM = frame + 3, 'mLyrics'
+end
+
+local function fetch(title, artist)
+  Q.title, Q.artist, Q.src, Q.pick = title, artist, '-', ''
+  Q.dur = readTime(mDuration)
+  Q.log, Q.idx, Q.order = {}, 0, {}
+  for name in tostring(C.order):gmatch('[%w]+') do
+    if name == 'lrclib' or name == 'kugou' or name == 'netease' then Q.order[#Q.order + 1] = name end
+  end
+  if #Q.order == 0 then Q.order = { 'lrclib', 'kugou', 'netease' } end
+  nextProv()
 end
 
 -- the exact lookup found nothing: ask LRCLIB's search, which tolerates different spellings
@@ -1046,6 +1065,7 @@ local function acceptParsed(parsed, src, key, minLines)
   lastRaw = key
   waiting = false
   Q.src = src
+  lg(src .. ': ' .. #parsed .. ' lines loaded' .. (parsed[1] and parsed[1].wt and ' (word-timed)' or ''))
   loadWords(parsed)
   setMode(true)
   return true
@@ -1060,24 +1080,41 @@ local function measureText(name)
   return SKIN:GetMeasure(name):GetStringValue() or ''
 end
 
+nextProv = function()
+  Q.idx = Q.idx + 1
+  local p = Q.order[Q.idx]
+  if p == 'lrclib' then startGet()
+  elseif p == 'kugou' then startKugou()
+  elseif p == 'netease' then startNetease()
+  else
+    lg('no lyrics found')
+    failFinal()
+  end
+end
+
 -- one function per WebParser callback; a stale answer (wrong stage) is ignored
 function OnFailed()
-  if waiting and Q.stage == 1 then startSearch() end
+  if waiting and Q.stage == 1 then lg('lrclib exact: request failed'); startSearch() end
 end
 
 function OnFetched()
   if not (waiting and Q.stage == 1) then return end
-  if not accept(measureText('mLyrics'), 'lrclib') then startSearch() end
+  local raw = measureText('mLyrics')
+  if not accept(raw, 'lrclib') then lg('lrclib exact: no synced lyrics (' .. #raw .. ' bytes)'); startSearch() end
 end
 
 function OnSearched()
   if not (waiting and Q.stage == 2) then return end
-  local best = pickBest(measureText('mSearch'))
-  if not (best and accept(best, 'lrclib')) then startKugou() end
+  local raw = measureText('mSearch')
+  local best = pickBest(raw)
+  if not (best and accept(best, 'lrclib')) then
+    lg('lrclib search: no match (' .. #raw .. ' bytes)')
+    nextProv()
+  end
 end
 
 function OnSearchFailed()
-  if waiting and Q.stage == 2 then startKugou() end
+  if waiting and Q.stage == 2 then lg('lrclib search: request failed'); nextProv() end
 end
 
 function OnKgSearched()
@@ -1092,7 +1129,11 @@ function OnKgSearched()
     local sc = id and key and matchScore(unescape(jstr(c, 'song') or ''), unescape(jstr(c, 'singer') or ''), d)
     if sc and (not bestScore or sc > bestScore) then bestId, bestKey, bestScore = id, key, sc end
   end
-  if not bestId then startNetease() return end
+  if not bestId then
+    lg('kugou search: no match (' .. #raw .. ' bytes, ' .. #splitObjs(raw, 'candidates') .. ' candidates)')
+    nextProv()
+    return
+  end
   Q.stage, Q.pick = 4, 'kg' .. bestId
   SKIN:Bang('!SetVariable', 'KgLyricsURL', 'https://lyrics.kugou.com/download?ver=1&client=pc&id=' .. urlenc(bestId)
     .. '&accesskey=' .. urlenc(bestKey) .. '&fmt=lrc&charset=utf8')
@@ -1103,24 +1144,30 @@ function OnKgLyrics()
   if not (waiting and Q.stage == 4) then return end
   local content = jstr(measureText('mKgL'), 'content')
   local ok = content and content ~= '' and acceptParsed(parseLRC(b64dec(content), true), 'kugou', content, 3)
-  if not ok then startNetease() end
+  if not ok then lg('kugou lyrics: empty or unreadable'); nextProv() end
 end
 
 function OnKgFailed()
-  if waiting and (Q.stage == 3 or Q.stage == 4) then startNetease() end
+  if waiting and (Q.stage == 3 or Q.stage == 4) then lg('kugou: request failed'); nextProv() end
 end
 
 function OnNeSearched()
   if not (waiting and Q.stage == 5) then return end
   local bestId, bestScore
-  for _, o in ipairs(splitObjs(measureText('mNeS'), 'songs')) do
+  local nraw = measureText('mNeS')
+  local songs = splitObjs(nraw, 'songs')
+  for _, o in ipairs(songs) do
     local id = o:match('^{%s*"id"%s*:%s*(%d+)')
     local who = o:match('"artists"%s*:%s*%[%s*{.-"name"%s*:%s*"(.-)"') or ''
     local d = tonumber(o:match('"duration"%s*:%s*(%d+)'))
     local sc = id and matchScore(unescape(jstr(o, 'name') or ''), unescape(who), d and d / 1000)
     if sc and (not bestScore or sc > bestScore) then bestId, bestScore = id, sc end
   end
-  if not bestId then failFinal() return end
+  if not bestId then
+    lg('netease search: no match (' .. #nraw .. ' bytes, ' .. #songs .. ' songs)')
+    nextProv()
+    return
+  end
   Q.stage, Q.pick = 6, 'ne' .. bestId
   SKIN:Bang('!SetVariable', 'NeLyricsURL', 'https://music.163.com/api/song/lyric?id=' .. bestId
     .. '&lv=-1&kv=-1&tv=-1&yv=-1')
@@ -1138,11 +1185,11 @@ function OnNeLyrics()
   local ok = false
   if yrc and yrc ~= '' then ok = acceptParsed(parseYRC(yrc), 'netease', yrc, 3) end
   if not ok and lrc and lrc ~= '' then ok = acceptParsed(parseLRC(lrc), 'netease', lrc, 3) end
-  if not ok then failFinal() end
+  if not ok then lg('netease lyrics: empty or unreadable'); nextProv() end
 end
 
 function OnNeFailed()
-  if waiting and (Q.stage == 5 or Q.stage == 6) then failFinal() end
+  if waiting and (Q.stage == 5 or Q.stage == 6) then lg('netease: request failed'); nextProv() end
 end
 
 function OnWallpaper()
@@ -1606,7 +1653,7 @@ local function pumpRequests(now)
     updF = nil
     SKIN:Bang('!CommandMeasure', updM, 'Update')
   end
-  if waiting and now - waitSince > 30 then failFinal() end
+  if waiting and now - waitSince > 30 then lg('timed out'); failFinal() end
 end
 
 local function trackTick(now)
@@ -1665,7 +1712,9 @@ local function debugTick(now, cmd)
       string.format('w1:%s pill:%s', tostring(w1), tostring(lastPill)),
       'current: ' .. tostring(dbgCur),
       'wall: ' .. (wall and (wall[1] .. ',' .. wall[2] .. ',' .. wall[3]) or 'none'),
+      'order: ' .. table.concat(Q.order, ' > '),
     }
+    for i = 1, #Q.log do parts[#parts + 1] = '  ' .. Q.log[i] end
     for i = 1, #parts do parts[i] = clean(parts[i]) end
     cmd[#cmd + 1] = '[!SetOption DebugText Text "pos: %1 | state: %2#CRLF#' .. table.concat(parts, '#CRLF#') .. '"]'
     cmd[#cmd + 1] = '[!UpdateMeter DebugText]'
