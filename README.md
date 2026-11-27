@@ -17,7 +17,8 @@ current lyric line, a progress bar and a small 4-band audio visualizer.
 - **Word-synced lyrics:** when LRCLIB has a word-by-word version of a song (its "lyricsfile"),
   the highlight follows the real words. If the first match is only line-synced, the skin
   shows it straight away and looks for a word-synced version in the background, swapping it in
-  if one is found. Otherwise (and for KuGou) the words are spread over each line automatically.
+  if one is found. A swap only happens for the same artist and a similar number of lines, so a
+  same-named song by someone else is ignored. Otherwise (and for KuGou) the words are spread over each line automatically.
 - **Testing the lyric sources:** in Settings > Lyrics, "Lyric sources (testing)" sets the
   order, or limits the skin to one source (e.g. "KuGou only"). Turn on Settings > Motion >
   "Debug overlay" and the overlay lists, per song, what each source answered: request failed,

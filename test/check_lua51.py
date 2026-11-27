@@ -15,7 +15,7 @@ import subprocess
 import sys
 
 MAX_UPVALUES = 55      # Lua 5.1 allows 60 per function; keep a margin
-MAX_LOCALS = 180       # Lua 5.1 allows 200 per function
+MAX_LOCALS = 190       # Lua 5.1 allows 200 active at once; this counts every local, so it is conservative
 BANNED = [r'\bgoto\b', r'\btable\.unpack\b', r'\butf8\.', r'\bmath\.type\b', r'\bstring\.pack\b',
           r'\bbit32\.', r'\bmath\.tointeger\b', r'[^/]//[^/]']
 

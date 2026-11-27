@@ -258,10 +258,11 @@ local SYNCED = table.concat(parts, '\\n')   -- the literal backslash-n JSON form
 
 -- MOCK_WS = exact | search | none : where a word-synced (lyricsfile) version exists
 local WS = os.getenv('MOCK_WS') or 'none'
-local function lyricsfile()
+local BAD = os.getenv('MOCK_WSBAD')      -- artist | lines : the word-synced search hit is the wrong song
+local function lyricsfile(maxLines)
   local y = { "version: '1.0'", 'metadata:', '  title: x', 'lines:' }
   for i, l in ipairs(LRC) do
-    if l[2] ~= '' and not l[2]:find('\\', 1, true) then
+    if l[2] ~= '' and not l[2]:find('\\', 1, true) and (not maxLines or i <= maxLines) then
       local nxt = LRC[i + 1] and LRC[i + 1][1] or (l[1] + 4)
       local words = {}
       for w in l[2]:gmatch('%S+') do words[#words + 1] = w end
@@ -335,9 +336,9 @@ local SEARCH_MODE = os.getenv('MOCK_SEARCH') or '1'      -- 1 = good results, 0 
 local function searchJson()
   return '[{"id":11,"trackName":"' .. title .. ' (Live)","artistName":"' .. artist .. '","duration":400.0,"instrumental":false,'
     .. '"plainLyrics":"x","syncedLyrics":"[00:01.00] wrong version"},'
-    .. '{"id":22,"trackName":"' .. title .. '","artistName":"' .. artist .. '","albumName":"A","duration":211.0,"instrumental":false,'
+    .. '{"id":22,"trackName":"' .. title .. '","artistName":"' .. (BAD == 'artist' and 'Someone Else' or artist) .. '","albumName":"A","duration":211.0,"instrumental":false,'
     .. '"hasWordSync":' .. tostring(WS == 'search') .. ',"plainLyrics":"x","syncedLyrics":"' .. SYNCED .. '\\n[03:25.00] extra line"'
-    .. (WS == 'search' and (',"lyricsfile":"' .. lyricsfile() .. '"') or '') .. '},'
+    .. (WS == 'search' and (',"lyricsfile":"' .. lyricsfile(BAD == 'lines' and 5 or nil) .. '"') or '') .. '},'
     .. '{"id":33,"trackName":"' .. title .. '","artistName":"' .. artist .. '","duration":210.0,"instrumental":false,'
     .. '"plainLyrics":"p","syncedLyrics":null}]'
 end

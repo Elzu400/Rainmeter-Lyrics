@@ -53,7 +53,7 @@ local waiting, lastRaw = false, nil
 local curTitle, curArtist = nil, nil
 local seenSince, fetchPending, waitSince = 0, false, 0
 local trigF, trigM, updF, updM, enabledOnce = nil, 'mLyrics', nil, nil, {}
-local Q = { up = false, alt = false, q = '', stage = 0, title = '', artist = '', dur = 0, src = '-', pick = '', order = {}, idx = 0, log = {} }   -- current lyrics request
+local Q = { lines = 0, up = false, alt = false, q = '', stage = 0, title = '', artist = '', dur = 0, src = '-', pick = '', order = {}, idx = 0, log = {} }   -- current lyrics request
 local nextProv                        -- moves on to the next lyrics provider (set below)
 
 -- player time
@@ -511,17 +511,16 @@ local function parseLRC(raw, noEsc)
   return out
 end
 
--- yaml scalar -> string (plain, 'single quoted' or "double quoted")
-local function yamlStr(v)
-  v = v:gsub('%s+$', '')
-  local c = v:sub(1, 1)
-  if c == "'" then return (v:sub(2, -2):gsub("''", "'")) end
-  if c == '"' then return unescape(v:sub(2, -2)) end
-  return v
-end
-
 -- LRCLIB "lyricsfile" (YAML with a start time for every word) -> same list as parseLRC, or nil
 local function parseLyricsfile(y)
+  -- yaml scalar -> string (plain, 'single quoted' or "double quoted")
+  local function yamlStr(v)
+    v = v:gsub('%s+$', '')
+    local c = v:sub(1, 1)
+    if c == "'" then return (v:sub(2, -2):gsub("''", "'")) end
+    if c == '"' then return unescape(v:sub(2, -2)) end
+    return v
+  end
   local rows, cur, w = {}, nil, nil
   for line in (y .. '\n'):gmatch('(.-)\n') do
     line = line:gsub('\r$', '')
@@ -988,6 +987,26 @@ local function matchScore(name, who, dur)
   return score
 end
 
+-- true when a result's artist is one of the track's artists ("A, B" / "A & B" count as both)
+local function artistOk(who)
+  local nw_ = normName(who)
+  if nw_ == '' then return false end
+  for part in (Q.artist .. ','):gmatch('%s*([^,&;/]+)[,&;/]') do
+    local qa = normName(part)
+    if qa ~= '' and (nw_ == qa or nw_:find(qa, 1, true) or qa:find(nw_, 1, true)) then return true end
+  end
+  local whole = normName(Q.artist)
+  return whole ~= '' and (nw_ == whole or nw_:find(whole, 1, true) ~= nil)
+end
+
+local function sungLines(parsed)
+  local n = 0
+  for _, l in ipairs(parsed) do
+    if not isPause(l.text) then n = n + 1 end
+  end
+  return n
+end
+
 local function lg(msg)
   Q.log[#Q.log + 1] = msg
   if C.debug then SKIN:Bang('!Log', clean('RainmeterLyrics: ' .. msg), 'Debug') end
@@ -1050,6 +1069,7 @@ local function fromRecord(chunk, wordOnly)
     local lf = jstr(chunk, 'lyricsfile')
     local parsed = lf and lf ~= '' and parseLyricsfile(unescape(lf))
     if parsed then return parsed, lf, true end
+    lg('lrclib: word sync flagged but unreadable ' .. (lf and clean(lf:sub(1, 60)) or '(no lyricsfile)'))
   end
   if wordOnly then return nil end
   local synced = jstr(chunk, 'syncedLyrics')
@@ -1068,7 +1088,10 @@ local function pickBest(raw, wordOnly)
       local sc = matchScore(jstr(chunk, 'trackName') or '', jstr(chunk, 'artistName') or '', jnum(chunk, 'duration'))
       if sc then
         local word = chunk:find('"hasWordSync"%s*:%s*true') ~= nil
-        if word or not wordOnly then cands[#cands + 1] = { chunk = chunk, sc = sc, word = word } end
+        -- swapping lyrics that are already showing is only safe for the same song: the artist
+        -- has to match (a same-named song by someone else has different lyrics)
+        local sameSong = not wordOnly or artistOk(jstr(chunk, 'artistName') or '')
+        if (word or not wordOnly) and sameSong then cands[#cands + 1] = { chunk = chunk, sc = sc, word = word } end
       end
     end
   end
@@ -1078,6 +1101,14 @@ local function pickBest(raw, wordOnly)
   end)
   for _, c in ipairs(cands) do
     local parsed, key, isWord = fromRecord(c.chunk, wordOnly)
+    -- and it must have about as many sung lines as the lyrics it replaces
+    if parsed and wordOnly and Q.lines > 0 then
+      local n = sungLines(parsed)
+      if abs(n - Q.lines) > max(3, Q.lines * 0.15) then
+        lg('lrclib: skipped a word-synced version with ' .. n .. ' lines (current ' .. Q.lines .. ')')
+        parsed = nil
+      end
+    end
     if parsed then
       Q.pick = tostring(jnum(c.chunk, 'id') or '')
       return parsed, key, isWord
@@ -1122,6 +1153,7 @@ local function acceptParsed(parsed, src, key, minLines)
   lastRaw = key
   waiting = false
   Q.src = src
+  Q.lines = sungLines(parsed)
   lg(src .. ': ' .. #parsed .. ' lines loaded' .. (parsed[1] and parsed[1].wt and ' (word-timed)' or ''))
   loadWords(parsed)
   setMode(true)
@@ -1164,7 +1196,10 @@ function OnFetched()
   end
   -- line-synced only: the lyrics are on screen already; look for a word-synced version of the
   -- same song in the background and swap it in if there is one
-  if not isWord then
+  if isWord then
+    lg('lrclib exact: already word-timed, no further search')
+  else
+    lg('lrclib exact: line-synced, looking for a word-synced version')
     Q.up = true
     startSearch()
   end
