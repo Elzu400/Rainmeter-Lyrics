@@ -189,6 +189,9 @@ OnDownloadErrorAction=[!CommandMeasure mScript "OnFailed()"]
 Measure=WebParser
 URL=#LyricsSearchURL#
 UserAgent=RainmeterLyrics (https://github.com/Elzu400/rainmeter-lyrics)
+; WebParser only hands back text that a RegExp captured: capture the whole answer
+RegExp=(?s)(.*)
+StringIndex=1
 UpdateRate=-1
 DynamicVariables=1
 Disabled=1
@@ -202,6 +205,9 @@ OnDownloadErrorAction=[!CommandMeasure mScript "OnSearchFailed()"]
 Measure=WebParser
 URL=#KgSearchURL#
 UserAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36
+; WebParser only hands back text that a RegExp captured: capture the whole answer
+RegExp=(?s)(.*)
+StringIndex=1
 UpdateRate=-1
 DynamicVariables=1
 Disabled=1
@@ -214,6 +220,9 @@ OnDownloadErrorAction=[!CommandMeasure mScript "OnKgFailed()"]
 Measure=WebParser
 URL=#KgLyricsURL#
 UserAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36
+; WebParser only hands back text that a RegExp captured: capture the whole answer
+RegExp=(?s)(.*)
+StringIndex=1
 UpdateRate=-1
 DynamicVariables=1
 Disabled=1
@@ -226,6 +235,9 @@ OnDownloadErrorAction=[!CommandMeasure mScript "OnKgFailed()"]
 Measure=WebParser
 URL=#NeSearchURL#
 UserAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36
+; WebParser only hands back text that a RegExp captured: capture the whole answer
+RegExp=(?s)(.*)
+StringIndex=1
 UpdateRate=-1
 DynamicVariables=1
 Disabled=1
@@ -238,6 +250,9 @@ OnDownloadErrorAction=[!CommandMeasure mScript "OnNeFailed()"]
 Measure=WebParser
 URL=#NeLyricsURL#
 UserAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36
+; WebParser only hands back text that a RegExp captured: capture the whole answer
+RegExp=(?s)(.*)
+StringIndex=1
 UpdateRate=-1
 DynamicVariables=1
 Disabled=1
