@@ -58,7 +58,7 @@ local nextProv                        -- moves on to the next lyrics provider (s
 
 -- player time
 local lastPos, lastClock, disp, firstTime, wasPlaying = -1, 0, 0, true, false
-local dbgPos, dbgEst, dbgErr, lyrFrames = 0, 0, nil, 0
+local dbgPos, dbgEst, dbgErr, lyrFrames, dbgFree = 0, 0, nil, 0, false
 local lastProg = nil
 local curMode = nil                  -- true = lyric strip, false = title/artist
 
@@ -1724,7 +1724,7 @@ local function debugTick(now, cmd)
     local parts = {
       string.format('words:%d groups:%d mode:%s wait:%s src:%s %s', nw, #gT0, tostring(curMode), tostring(waiting), Q.src, Q.pick),
       string.format('t:%.1f appear:%.2f cam:%.0f style:%s page:%s', disp, appear, cam or -1, C.mode, tostring(curPage)),
-      string.format('player pos:%.1f est:%.1f since-update:%.1fs playing:%s lyric-frames:%d', dbgPos, dbgEst, age, tostring(isPlaying()), lyrFrames),
+      string.format('player pos:%.1f est:%.1f since-update:%.1fs playing:%s lyric-frames:%d free-running:%s', dbgPos, dbgEst, age, tostring(isPlaying()), lyrFrames, tostring(dbgFree)),
       'error: ' .. tostring(dbgErr),
       string.format('w1:%s pill:%s', tostring(w1), tostring(lastPill)),
       'current: ' .. tostring(dbgCur),
@@ -1761,7 +1761,15 @@ function Update()
   if pos ~= lastPos then lastPos, lastClock = pos, now end
   if not playing or not wasPlaying then lastClock = now end
   wasPlaying = playing
-  local est = pos + (playing and min(now - lastClock, 1.2) or 0)
+  -- Between the player's updates the position is extrapolated, but only up to 1.2 s: if it has
+  -- not changed for 2.5 s the player is not reporting its position while playing (some do that
+  -- until you pause/seek), so the clock simply runs on from the last known position.
+  local ext = now - lastClock
+  if ext > 1.2 and ext <= 2.5 then ext = 1.2 end
+  dbgFree = playing and ext > 2.5
+  local est = pos + (playing and ext or 0)
+  local dur = readTime(mDuration)
+  if dur > 0 and est > dur then est = dur end
   if firstTime or abs(est - disp) > 1.5 then
     disp, firstTime = est, false
   elseif playing then

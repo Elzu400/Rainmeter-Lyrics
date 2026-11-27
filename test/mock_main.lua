@@ -74,8 +74,10 @@ local searchRaw = ''
 local provRaw = {}                    -- responses of the KuGou / NetEase measures
 local band = { 0, 0, 0, 0, 0, 0, 0, 0 }
 
+local stallPos = tonumber(os.getenv('MOCK_START') or 0)
 local snap = { nextS = 0.2, val = 0, k = 0 }
 local function reportedPos()
+  if os.getenv('MOCK_STALL') then return stallPos end   -- the player never updates its position
   if os.getenv('MOCK_JITTER') ~= '1' then return songT end
   if songT < snap.val - 0.5 or songT > snap.val + 3 then          -- seek or pause: resync at once
     snap.val, snap.nextS = math.floor(songT), songT + 0.5
