@@ -226,7 +226,7 @@ local function loadConfig()
   C.wallTint    = num('WallTintBg', 1) ~= 0
   C.wallEvery   = num('WallRefreshMin', 0) * 60
   C.debug       = num('Debug', 0) ~= 0
-  C.order       = var('LyricsOrder', 'lrclib,kugou,netease')
+  C.order       = var('LyricsOrder', 'lrclib,kugou')
   C.estChar     = C.fontSize * 96 / 72 * 0.58   -- rough px per character until measured
 
   local r, g, b = tostring(var('WallAvg', '')):match('^(%d+),(%d+),(%d+)$')
@@ -505,24 +505,6 @@ local function parseLRC(raw, noEsc)
       end
       text = text:gsub('<%d+:%d+%.?%d*>', ''):gsub('^%s+', ''):gsub('%s+$', '')
       for _, t in ipairs(times) do out[#out + 1] = { t = t, text = text, wt = wt } end
-    end
-  end
-  table.sort(out, function(a, b) return a.t < b.t end)
-  return out
-end
-
--- NetEase word-timed lyrics: [start_ms,dur_ms](start_ms,dur_ms,0)word(...)word ...
-local function parseYRC(raw)
-  local out = {}
-  for line in (unescape(raw) .. '\n'):gmatch('(.-)\n') do
-    local body = line:match('^%[%d+,%d+%](.*)$')
-    if body then
-      local toks = {}
-      for st, w in body:gmatch('%((%d+),%d+,%-?%d+%)([^%(]*)') do
-        toks[#toks + 1] = { t = tonumber(st) / 1000, s = w }
-      end
-      local wt = mergeToks(toks)
-      if #wt > 0 then out[#out + 1] = { t = wt[1].t, text = wtText(wt), wt = wt } end
     end
   end
   table.sort(out, function(a, b) return a.t < b.t end)
@@ -965,9 +947,9 @@ local function fetch(title, artist)
   Q.dur = readTime(mDuration)
   Q.log, Q.idx, Q.order = {}, 0, {}
   for name in tostring(C.order):gmatch('[%w]+') do
-    if name == 'lrclib' or name == 'kugou' or name == 'netease' then Q.order[#Q.order + 1] = name end
+    if name == 'lrclib' or name == 'kugou' then Q.order[#Q.order + 1] = name end
   end
-  if #Q.order == 0 then Q.order = { 'lrclib', 'kugou', 'netease' } end
+  if #Q.order == 0 then Q.order = { 'lrclib', 'kugou' } end
   nextProv()
 end
 
@@ -980,11 +962,12 @@ local function startSearch()
   if t == '' then t = Q.title end
   local a = Q.artist:gsub('%s*[,&;/].*$', ''):gsub('%s+[Ff]e?a?t%.?%s+.*$', '')
   if a == '' then a = Q.artist end
-  -- free-text search like the LRCLIB website (the strict track_name + artist_name form misses
-  -- songs whose names differ a little); the second try uses the title alone
+  -- Search by title only (adding the artist made LRCLIB return nothing for songs whose artist
+  -- is spelled a little differently; the artist is used when ranking the results instead).
+  -- If that finds nothing, a second try uses LRCLIB's free-text search with title and artist.
   Q.alt = false
-  Q.q = t
-  SKIN:Bang('!SetVariable', 'LyricsSearchURL', 'https://lrclib.net/api/search?q=' .. urlenc(t .. ' ' .. a))
+  Q.q = t .. ' ' .. a
+  SKIN:Bang('!SetVariable', 'LyricsSearchURL', 'https://lrclib.net/api/search?track_name=' .. urlenc(t))
   trigF, trigM = frame + 3, 'mSearch'
 end
 
@@ -1047,15 +1030,6 @@ local function startKugou()
   trigF, trigM = frame + 3, 'mKgS'
 end
 
--- step 5: NetEase Cloud Music (search, then fetch the lyric of the best match)
-local function startNetease()
-  Q.stage = 5
-  local t, a = plainTitleArtist()
-  SKIN:Bang('!SetVariable', 'NeSearchURL', 'https://music.163.com/api/search/get/web?csrf_token=&hlpretag=&hlposttag='
-    .. '&s=' .. urlenc(t .. ' ' .. a) .. '&type=1&offset=0&total=true&limit=8')
-  trigF, trigM = frame + 3, 'mNeS'
-end
-
 -- ---------- called by WebParser / RunCommand ----------
 
 local function failFinal()
@@ -1093,7 +1067,6 @@ nextProv = function()
   local p = Q.order[Q.idx]
   if p == 'lrclib' then startGet()
   elseif p == 'kugou' then startKugou()
-  elseif p == 'netease' then startNetease()
   else
     lg('no lyrics found')
     failFinal()
@@ -1116,10 +1089,10 @@ function OnSearched()
   local raw = measureText('mSearch')
   local best = pickBest(raw)
   if not (best and accept(best, 'lrclib')) then
-    lg('lrclib search' .. (Q.alt and ' (title only)' or '') .. ': no match (' .. #raw .. ' bytes) ' .. snip(raw))
+    lg('lrclib search' .. (Q.alt and ' (keywords)' or ' (title)') .. ': no match (' .. #raw .. ' bytes) ' .. snip(raw))
     if not Q.alt and Q.q and Q.q ~= '' then
       Q.alt = true
-      SKIN:Bang('!SetVariable', 'LyricsSearchURL', 'https://lrclib.net/api/search?track_name=' .. urlenc(Q.q))
+      SKIN:Bang('!SetVariable', 'LyricsSearchURL', 'https://lrclib.net/api/search?q=' .. urlenc(Q.q))
       trigF, trigM = frame + 3, 'mSearch'
     else
       nextProv()
@@ -1163,47 +1136,6 @@ end
 
 function OnKgFailed()
   if waiting and (Q.stage == 3 or Q.stage == 4) then lg('kugou: request failed'); nextProv() end
-end
-
-function OnNeSearched()
-  if not (waiting and Q.stage == 5) then return end
-  local bestId, bestScore
-  local nraw = measureText('mNeS')
-  local songs = splitObjs(nraw, 'songs')
-  for _, o in ipairs(songs) do
-    local id = o:match('^{%s*"id"%s*:%s*(%d+)')
-    local who = o:match('"artists"%s*:%s*%[%s*{.-"name"%s*:%s*"(.-)"') or ''
-    local d = tonumber(o:match('"duration"%s*:%s*(%d+)'))
-    local sc = id and matchScore(unescape(jstr(o, 'name') or ''), unescape(who), d and d / 1000)
-    if sc and (not bestScore or sc > bestScore) then bestId, bestScore = id, sc end
-  end
-  if not bestId then
-    lg('netease search: no match (' .. #nraw .. ' bytes, ' .. #songs .. ' songs) ' .. snip(nraw))
-    nextProv()
-    return
-  end
-  Q.stage, Q.pick = 6, 'ne' .. bestId
-  SKIN:Bang('!SetVariable', 'NeLyricsURL', 'https://music.163.com/api/song/lyric?id=' .. bestId
-    .. '&lv=-1&kv=-1&tv=-1&yv=-1')
-  trigF, trigM = frame + 3, 'mNeL'
-end
-
-function OnNeLyrics()
-  if not (waiting and Q.stage == 6) then return end
-  local raw = measureText('mNeL')
-  local function section(name)
-    local _, e = raw:find('"' .. name .. '"%s*:%s*{')
-    return e and jstr(raw:sub(e), 'lyric')
-  end
-  local yrc, lrc = section('yrc'), section('lrc')
-  local ok = false
-  if yrc and yrc ~= '' then ok = acceptParsed(parseYRC(yrc), 'netease', yrc, 3) end
-  if not ok and lrc and lrc ~= '' then ok = acceptParsed(parseLRC(lrc), 'netease', lrc, 3) end
-  if not ok then lg('netease lyrics: empty or unreadable'); nextProv() end
-end
-
-function OnNeFailed()
-  if waiting and (Q.stage == 5 or Q.stage == 6) then lg('netease: request failed'); nextProv() end
 end
 
 function OnWallpaper()

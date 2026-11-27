@@ -30,7 +30,7 @@ COMMON = {
     'ShowProgress': '1', 'RightPanel': 'combined', 'CtlHold': '500', 'FontFace': 'Segoe UI', 'FontWeight': '700',
     'LyricMode': 'paged', 'PageWords': '1', 'PillWords': '1', 'PillStyle': '1', 'PillPadY': '2',
     'CamSmooth': '250', 'PillSpeed': '100', 'LyricsOffset': '0', 'PositionUnit': '1',
-    'FPS': '60', 'VisSensitivity': '50', 'Debug': '0', 'LyricsOrder': 'lrclib,kugou,netease',
+    'FPS': '60', 'VisSensitivity': '50', 'Debug': '0', 'LyricsOrder': 'lrclib,kugou',
     'ColorMode': 'manual', 'BgColor': '20,18,28', 'BgAlpha': '166', 'TextColor': '255,255,255',
     'AccentColor': '255,100,160', 'PillAlpha': '107',
     'WallMinSat': '45', 'WallTintBg': '1', 'WallRefreshMin': '0',
@@ -99,8 +99,6 @@ LyricsURL=https://lrclib.net/api/get
 LyricsSearchURL=https://lrclib.net/api/search
 KgSearchURL=https://lyrics.kugou.com/search
 KgLyricsURL=https://lyrics.kugou.com/download
-NeSearchURL=https://music.163.com/api/search/get/web
-NeLyricsURL=https://music.163.com/api/song/lyric
 DimColor=175,175,195,165
 
 ; ====================== MEASURES ======================
@@ -202,7 +200,7 @@ OnConnectErrorAction=[!CommandMeasure mScript "OnSearchFailed()"]
 OnRegExpErrorAction=[!CommandMeasure mScript "OnSearchFailed()"]
 OnDownloadErrorAction=[!CommandMeasure mScript "OnSearchFailed()"]
 
-; ---- fallback providers: KuGou (search, download) and NetEase (search, lyric) ----
+; ---- fallback providers: KuGou (search, download) ----
 [mKgS]
 Measure=WebParser
 URL=#KgSearchURL#
@@ -234,38 +232,6 @@ FinishAction=[!CommandMeasure mScript "OnKgLyrics()"]
 OnConnectErrorAction=[!CommandMeasure mScript "OnKgFailed()"]
 OnRegExpErrorAction=[!CommandMeasure mScript "OnKgFailed()"]
 OnDownloadErrorAction=[!CommandMeasure mScript "OnKgFailed()"]
-
-[mNeS]
-Measure=WebParser
-URL=#NeSearchURL#
-UserAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36
-; WebParser only hands back text that a RegExp captured: capture the whole answer
-RegExp=(?s)(.*)
-StringIndex=1
-CodePage=65001
-UpdateRate=-1
-DynamicVariables=1
-Disabled=1
-FinishAction=[!CommandMeasure mScript "OnNeSearched()"]
-OnConnectErrorAction=[!CommandMeasure mScript "OnNeFailed()"]
-OnRegExpErrorAction=[!CommandMeasure mScript "OnNeFailed()"]
-OnDownloadErrorAction=[!CommandMeasure mScript "OnNeFailed()"]
-
-[mNeL]
-Measure=WebParser
-URL=#NeLyricsURL#
-UserAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36
-; WebParser only hands back text that a RegExp captured: capture the whole answer
-RegExp=(?s)(.*)
-StringIndex=1
-CodePage=65001
-UpdateRate=-1
-DynamicVariables=1
-Disabled=1
-FinishAction=[!CommandMeasure mScript "OnNeLyrics()"]
-OnConnectErrorAction=[!CommandMeasure mScript "OnNeFailed()"]
-OnRegExpErrorAction=[!CommandMeasure mScript "OnNeFailed()"]
-OnDownloadErrorAction=[!CommandMeasure mScript "OnNeFailed()"]
 
 ; ---- average wallpaper colour (only run when Color source = Wallpaper) ----
 [mWall]

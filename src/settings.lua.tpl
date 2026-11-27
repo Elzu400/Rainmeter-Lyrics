@@ -68,12 +68,10 @@ local DEFS = {
     { label = 'Lyrics timing offset', key = 'LyricsOffset', kind = 'num', min = -5, max = 5, step = 0.1, unit = ' s' },
     { label = 'Lyric sources (testing)', key = 'LyricsOrder', kind = 'choice',
       choices = {
-        { label = 'LRCLIB > KuGou > NetEase', value = 'lrclib,kugou,netease' },
-        { label = 'KuGou > NetEase > LRCLIB', value = 'kugou,netease,lrclib' },
-        { label = 'NetEase > KuGou > LRCLIB', value = 'netease,kugou,lrclib' },
+        { label = 'LRCLIB > KuGou', value = 'lrclib,kugou' },
+        { label = 'KuGou > LRCLIB', value = 'kugou,lrclib' },
         { label = 'LRCLIB only', value = 'lrclib' },
-        { label = 'KuGou only', value = 'kugou' },
-        { label = 'NetEase only', value = 'netease' } } },
+        { label = 'KuGou only', value = 'kugou' } } },
   },
   { -- Colors
     { label = 'Color source', key = 'ColorMode', kind = 'choice',

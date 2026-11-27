@@ -28,10 +28,10 @@ Rainmeter itself (https://www.rainmeter.net, GPL-2.0). Nothing from them is bund
   shipped with this repository. Lyrics are the property of their respective rights
   holders. Please be considerate with request volume; the skin only asks once per track.
 
-## KuGou and NetEase Cloud Music (fallback lyrics)
+## KuGou (fallback lyrics)
 
-- https://lyrics.kugou.com and https://music.163.com
+- https://lyrics.kugou.com
 - Only queried when LRCLIB has no match for a track. The track title, artist and length are
-  sent to these services (unofficial, undocumented public endpoints that may change or stop
+  sent to this service (an unofficial, undocumented public endpoint that may change or stop
   working at any time). Nothing is stored in or shipped with this repository; lyrics belong to
   their respective rights holders.

@@ -108,8 +108,6 @@ local MS = {
   mSearch = mk(function() return searchRaw end, function() return 0 end),
   mKgS = mk(function() return provRaw.mKgS or '' end, function() return 0 end),
   mKgL = mk(function() return provRaw.mKgL or '' end, function() return 0 end),
-  mNeS = mk(function() return provRaw.mNeS or '' end, function() return 0 end),
-  mNeL = mk(function() return provRaw.mNeL or '' end, function() return 0 end),
   mWall = mk(function() return '40,90,160' end, function() return 0 end),
 }
 for i = 1, 8 do MS['mBand' .. i] = mk(function() return '' end, function() return band[i] end) end
@@ -162,8 +160,8 @@ end
 local pendingFetch, pendingWall, pendingSearch = nil, nil, nil
 local pendingProv = {}
 logs = {}
-local PROV = { mKgS = 'OnKgSearched', mKgL = 'OnKgLyrics', mNeS = 'OnNeSearched', mNeL = 'OnNeLyrics' }
-local PROV_FAIL = { mKgS = 'OnKgFailed', mKgL = 'OnKgFailed', mNeS = 'OnNeFailed', mNeL = 'OnNeFailed' }
+local PROV = { mKgS = 'OnKgSearched', mKgL = 'OnKgLyrics' }
+local PROV_FAIL = { mKgS = 'OnKgFailed', mKgL = 'OnKgFailed' }
 local frame = 0
 local writes = {}
 
@@ -322,15 +320,8 @@ local function b64enc(d)
   end
   return table.concat(out)
 end
--- MOCK_SRC = kugou | netease | yrc | none : which fallback provider "has" the lyrics
+-- MOCK_SRC = kugou | none | err : whether the KuGou fallback "has" the lyrics
 local SRC = os.getenv('MOCK_SRC') or 'none'
-local YRC_LINES = {}
-for i = 0, 11 do
-  local t0 = i * 2000
-  YRC_LINES[#YRC_LINES + 1] = string.format('[%d,1800](%d,400,0)Hel(%d,400,0)lo (%d,500,0)my (%d,400,0)dear (%d,500,0)friend',
-    t0, t0, t0 + 400, t0 + 800, t0 + 1300, t0 + 1700)
-end
-local YRC = '{\\"t\\":0,\\"c\\":[{\\"tx\\":\\"credit: x\\"}]}\\n' .. table.concat(YRC_LINES, '\\n')
 local function provResponse(m)
   if m == 'mKgS' then
     if SRC ~= 'kugou' then return '{"status":200,"info":"OK","candidates":[]}' end
@@ -347,15 +338,6 @@ local function provResponse(m)
       lrc = table.concat(L, '\n')
     end
     return '{"status":200,"content":"' .. b64enc('\239\187\191' .. lrc):gsub('/', '\\/') .. '","fmt":"lrc"}'
-  elseif m == 'mNeS' then
-    if SRC ~= 'netease' and SRC ~= 'yrc' then return '{"result":{"songs":[],"songCount":0},"code":200}' end
-    return '{"result":{"songs":[{"id":900,"name":"Other Song","artists":[{"id":1,"name":"Nobody"}],"album":{"id":2,"name":"A"},"duration":300000},'
-      .. '{"id":901,"name":"' .. title .. '","artists":[{"id":1,"name":"' .. artist .. '","picUrl":null}],"album":{"id":2,"name":"A"},"duration":210000}],"songCount":2},"code":200}'
-  else
-    if SRC == 'yrc' then
-      return '{"sgc":false,"lrc":{"version":3,"lyric":"[00:00.00] fallback line"},"yrc":{"version":2,"lyric":"' .. YRC .. '"},"code":200}'
-    end
-    return '{"sgc":false,"lrc":{"version":3,"lyric":"' .. SYNCED .. '"},"code":200}'
   end
 end
 local startSong = 0
