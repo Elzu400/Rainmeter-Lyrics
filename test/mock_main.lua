@@ -1,6 +1,6 @@
 -- Copyright (C) 2026 Elzu400
 -- SPDX-License-Identifier: GPL-3.0-or-later
--- This file is part of SonoraLyrics, free software under the GNU GPL v3 or later (see LICENSE).
+-- This file is part of RainmeterLyrics, free software under the GNU GPL v3 or later (see LICENSE).
 
 -- Headless harness for lyrics.lua: fake Rainmeter API driven by the generated ini.
 -- usage: texlua mock_main.lua <tree> <classic|slim> [seconds] [verbose]
@@ -10,7 +10,7 @@ local function readFile(p) local f = assert(io.open(p, 'rb')); local s = f:read(
 
 -- ---------- variables from Settings.inc (+ preset overrides) ----------
 local VARS = {}
-for line in readFile(tree .. '/SonoraLyrics/@Resources/Settings.inc'):gmatch('[^\r\n]+') do
+for line in readFile(tree .. '/RainmeterLyrics/@Resources/Settings.inc'):gmatch('[^\r\n]+') do
   local k, v = line:match('^([%w_]+)=(.*)$')
   if k then VARS[k] = v end
 end
@@ -35,7 +35,7 @@ if os.getenv('MOCK_MODE') then VARS.LyricMode = os.getenv('MOCK_MODE') end
 -- ---------- meters / measures from the ini ----------
 local meters, measures, order = {}, {}, {}
 do
-  local ini = readFile(tree .. '/SonoraLyrics/Lyrics/SonoraLyrics.ini')
+  local ini = readFile(tree .. '/RainmeterLyrics/Lyrics/RainmeterLyrics.ini')
   local cur
   for line in ini:gmatch('[^\r\n]+') do
     local sec = line:match('^%[(.-)%]$')
@@ -245,7 +245,7 @@ for _, l in ipairs(LRC) do
 end
 local SYNCED = table.concat(parts, '\\n')   -- the literal backslash-n JSON form
 
-dofile(tree .. '/SonoraLyrics/@Resources/lyrics.lua')
+dofile(tree .. '/RainmeterLyrics/@Resources/lyrics.lua')
 
 -- ---------- metrics ----------
 local function parsePill(path)

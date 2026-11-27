@@ -1,8 +1,5 @@
 # Rainmeter Lyrics
 
-> The project was renamed from *SonoraLyrics*. The skin folder, file names and in-code names
-> still say `SonoraLyrics` for now, so paths below use that name.
-
 A Rainmeter skin that shows **synced lyrics** for whatever is playing in the
 Sonora music player (or any player that Windows exposes through its
 media controls). It sits on your desktop as a rounded pill with the album cover, the
@@ -39,9 +36,12 @@ current lyric line, a progress bar and a small 4-band audio visualizer.
 1. Install the MediaPlayer skin/plugin (see Requirements) and restart Rainmeter once.
 2. Download the latest `.rmskin` from the [Releases](../../releases) page and open it.
    Rainmeter installs it for you.
-3. In Rainmeter's manager load `SonoraLyrics\Lyrics\SonoraLyrics.ini`.
+3. In Rainmeter's manager load `RainmeterLyrics\Lyrics\RainmeterLyrics.ini`.
 4. Right-click the skin and choose the settings entry, or load
-   `SonoraLyrics\Settings\SonoraSettings.ini`, to adjust it.
+   `RainmeterLyrics\Settings\RainmeterLyricsSettings.ini`, to adjust it.
+
+**Upgrading from the old `SonoraLyrics` skin?** Unload it in Rainmeter and delete the old
+`SonoraLyrics` folder from `Documents\Rainmeter\Skins`; settings don't carry over.
 
 **Title/lyrics don't show up?** Make sure the MediaPlayer skin from the link above is
 installed. Rainmeter Lyrics needs its plugin.
@@ -70,8 +70,8 @@ extra packages):
 python build.py
 ```
 
-This creates `out/SonoraLyrics/` (the finished skin folder) and `SonoraLyrics.zip`.
-To make a `.rmskin`, follow Rainmeter's packaging steps with the `out/SonoraLyrics`
+This creates `out/RainmeterLyrics/` (the finished skin folder) and `RainmeterLyrics.zip`.
+To make a `.rmskin`, follow Rainmeter's packaging steps with the `out/RainmeterLyrics`
 folder.
 
 **Important:** Rainmeter needs Lua scripts saved as UTF-16 (little endian, with BOM),
@@ -89,7 +89,7 @@ python build.py
 texlua test/mock_main.lua test_tree classic 90
 texlua test/mock_main.lua test_tree slim 90
 texlua test/mock_settings.lua test_tree
-python3 test/check_lua51.py test_tree/SonoraLyrics/@Resources/lyrics.lua test_tree/SonoraLyrics/@Resources/settings.lua
+python3 test/check_lua51.py test_tree/RainmeterLyrics/@Resources/lyrics.lua test_tree/RainmeterLyrics/@Resources/settings.lua
 ```
 
 The last command checks the limits of Lua 5.1, the version Rainmeter embeds (for example at most 60

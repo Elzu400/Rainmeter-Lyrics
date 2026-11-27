@@ -1,8 +1,8 @@
 -- Copyright (C) 2026 Elzu400
 -- SPDX-License-Identifier: GPL-3.0-or-later
--- This file is part of SonoraLyrics, free software under the GNU GPL v3 or later (see LICENSE).
+-- This file is part of RainmeterLyrics, free software under the GNU GPL v3 or later (see LICENSE).
 
--- Sonora Lyrics - settings script (Lua 5.1, ASCII only).
+-- Rainmeter Lyrics - settings script (Lua 5.1, ASCII only).
 -- Edits Settings.inc (shared with the lyrics skin) and refreshes the lyrics skin.
 
 --@@DATA@@
@@ -14,7 +14,7 @@ local cfg, written = {}, {}
 local tab, started = 1, false
 local pending, dirtyAt = false, 0
 local status = 'Changes apply automatically'
-local mainConfig = 'SonoraLyrics\\Lyrics'
+local mainConfig = 'RainmeterLyrics\\Lyrics'
 
 local function clamp(v, lo, hi)
   if v < lo then return lo elseif v > hi then return hi end

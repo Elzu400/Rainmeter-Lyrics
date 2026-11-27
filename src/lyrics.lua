@@ -1,8 +1,8 @@
 -- Copyright (C) 2026 Elzu400
 -- SPDX-License-Identifier: GPL-3.0-or-later
--- This file is part of SonoraLyrics, free software under the GNU GPL v3 or later (see LICENSE).
+-- This file is part of RainmeterLyrics, free software under the GNU GPL v3 or later (see LICENSE).
 
--- Sonora Lyrics v5 - main script (Lua 5.1, as embedded in Rainmeter)
+-- Rainmeter Lyrics v5 - main script (Lua 5.1, as embedded in Rainmeter)
 --
 -- Keep this file ASCII. The packager saves it as UTF-16LE with a BOM, which is what
 -- makes Rainmeter treat every string (titles, lyrics, the note symbol) as Unicode.

@@ -1,22 +1,22 @@
 -- Copyright (C) 2026 Elzu400
 -- SPDX-License-Identifier: GPL-3.0-or-later
--- This file is part of SonoraLyrics, free software under the GNU GPL v3 or later (see LICENSE).
+-- This file is part of RainmeterLyrics, free software under the GNU GPL v3 or later (see LICENSE).
 
 -- Headless harness for settings.lua. usage: texlua mock_settings.lua <tree>
 local tree = arg[1]
 local function readFile(p) local f = assert(io.open(p, 'rb')); local s = f:read('*a'); f:close(); return s end
 
 local VARS = {}
-for line in readFile(tree .. '/SonoraLyrics/@Resources/Settings.inc'):gmatch('[^\r\n]+') do
+for line in readFile(tree .. '/RainmeterLyrics/@Resources/Settings.inc'):gmatch('[^\r\n]+') do
   local k, v = line:match('^([%w_]+)=(.*)$')
   if k then VARS[k] = v end
 end
-VARS.MainConfig = 'SonoraLyrics\\Lyrics'
+VARS.MainConfig = 'RainmeterLyrics\\Lyrics'
 
 local meters, measures = {}, {}
 do
   local cur
-  for line in readFile(tree .. '/SonoraLyrics/Settings/SonoraSettings.ini'):gmatch('[^\r\n]+') do
+  for line in readFile(tree .. '/RainmeterLyrics/Settings/RainmeterLyricsSettings.ini'):gmatch('[^\r\n]+') do
     local sec = line:match('^%[(.-)%]$')
     if sec then cur = { name = sec, opts = {} }
     elseif cur then
@@ -100,7 +100,7 @@ local function call(fn, ...)
   flush()
 end
 
-dofile(tree .. '/SonoraLyrics/@Resources/settings.lua')
+dofile(tree .. '/RainmeterLyrics/@Resources/settings.lua')
 
 local function visibleRows()
   local out = {}

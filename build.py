@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Elzu400
 # SPDX-License-Identifier: GPL-3.0-or-later (see LICENSE)
-"""Builds the SonoraLyrics skin folder (and a test tree with ASCII Lua) from templates."""
+"""Builds the RainmeterLyrics skin folder (and a test tree with ASCII Lua) from templates."""
 import os, shutil, sys, zipfile
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -66,7 +66,7 @@ def lua_data():
 
 # ---------------------------------------------------------------- Settings.inc
 def settings_inc():
-    out = ['[Variables]', '; Written by the Sonora Lyrics settings skin. Safe to edit by hand,',
+    out = ['[Variables]', '; Written by the Rainmeter Lyrics settings skin. Safe to edit by hand,',
            '; then refresh the lyrics skin.']
     for k in ORDER:
         out.append('%s=%s' % (k, DEFAULTS[k]))
@@ -83,14 +83,14 @@ def main_ini():
 Update=(1000 / #FPS#)
 AccurateText=1
 DynamicWindowSize=1
-ContextTitle=Sonora Lyrics settings
-ContextAction=[!ActivateConfig "SonoraLyrics\\Settings" "SonoraSettings.ini"]
+ContextTitle=Rainmeter Lyrics settings
+ContextAction=[!ActivateConfig "RainmeterLyrics\\Settings" "RainmeterLyricsSettings.ini"]
 
 [Metadata]
-Name=Sonora Lyrics
+Name=Rainmeter Lyrics
 Author=Custom
 Version=5.0
-Information=Pill lyrics for Sonora (LRCLIB + MediaPlayer). Right-click the skin and choose "Sonora Lyrics settings".
+Information=Pill lyrics for Sonora (LRCLIB + MediaPlayer). Right-click the skin and choose "Rainmeter Lyrics settings".
 
 [Variables]
 @Include=#@#Settings.inc
@@ -399,14 +399,14 @@ AccurateText=1
 DynamicWindowSize=1
 
 [Metadata]
-Name=Sonora Lyrics Settings
+Name=Rainmeter Lyrics Settings
 Author=Custom
 Version=5.0
-Information=Settings for the Sonora Lyrics skin. Changes apply automatically.
+Information=Settings for the Rainmeter Lyrics skin. Changes apply automatically.
 
 [Variables]
 @Include=#@#Settings.inc
-MainConfig=SonoraLyrics\\Lyrics
+MainConfig=RainmeterLyrics\\Lyrics
 TxtColor=232,232,242
 DimTxt=150,150,170
 
@@ -443,7 +443,7 @@ FontSize=13
 FontWeight=700
 FontColor=#TxtColor#
 AntiAlias=1
-Text=Sonora Lyrics - Settings
+Text=Rainmeter Lyrics - Settings
 
 [CloseBtn]
 Meter=Shape
@@ -622,7 +622,7 @@ Text=Reset all
 
 
 WALLCOLOR = r'''# Prints the average colour of the current desktop wallpaper as "R,G,B".
-# Used by the Sonora Lyrics skin (Color source = Wallpaper). Prints nothing on failure.
+# Used by the Rainmeter Lyrics skin (Color source = Wallpaper). Prints nothing on failure.
 try {
     Add-Type -AssemblyName System.Drawing
     $files = @()
@@ -660,14 +660,14 @@ README = '''SONORA LYRICS 5.0
 =================
 
 INSTALL
-  1. Unload any older "Sonora Lyrics" skin in the Rainmeter manager.
-  2. Copy the whole SonoraLyrics folder into  Documents\\Rainmeter\\Skins\\
-     (keep the folder name "SonoraLyrics").
+  1. Unload any older "Rainmeter Lyrics" skin in the Rainmeter manager.
+  2. Copy the whole RainmeterLyrics folder into  Documents\\Rainmeter\\Skins\\
+     (keep the folder name "RainmeterLyrics").
   3. In the Rainmeter manager press "Refresh all", then load
-         SonoraLyrics\\Lyrics\\SonoraLyrics.ini
+         RainmeterLyrics\\Lyrics\\RainmeterLyrics.ini
 
 SETTINGS
-  Right-click the skin > "Sonora Lyrics settings"  (or load SonoraLyrics\\Settings\\SonoraSettings.ini).
+  Right-click the skin > "Rainmeter Lyrics settings"  (or load RainmeterLyrics\\Settings\\RainmeterLyricsSettings.ini).
   Changes apply by themselves about a second after your last click.
     Layout : presets (Classic / Slim), size, cover, right side (visualizer / controls / combined), progress bar
     Lyrics : lyric style (Paged = calm, default / Scrolling = the old continuous scroll),
@@ -698,7 +698,7 @@ def write(path, text, encoding='utf-8'):
 
 def build_tree(base, utf16):
     shutil.rmtree(base, ignore_errors=True)
-    skin = os.path.join(base, 'SonoraLyrics')
+    skin = os.path.join(base, 'RainmeterLyrics')
     res = os.path.join(skin, '@Resources')
     enc = 'utf-16' if utf16 else 'utf-8'     # python's utf-16 writes a BOM + little endian
 
@@ -716,8 +716,8 @@ def build_tree(base, utf16):
     lic = os.path.join(ROOT, 'LICENSE')
     if os.path.exists(lic):
         shutil.copyfile(lic, os.path.join(skin, 'LICENSE.txt'))
-    write(os.path.join(skin, 'Lyrics', 'SonoraLyrics.ini'), main_ini())
-    write(os.path.join(skin, 'Settings', 'SonoraSettings.ini'), settings_ini())
+    write(os.path.join(skin, 'Lyrics', 'RainmeterLyrics.ini'), main_ini())
+    write(os.path.join(skin, 'Settings', 'RainmeterLyricsSettings.ini'), settings_ini())
     write(os.path.join(skin, 'README.txt'), README)
     for root, _, files in os.walk(skin):
         for fn in files:
@@ -730,7 +730,7 @@ def build_tree(base, utf16):
 if __name__ == '__main__':
     build_tree(TEST, utf16=False)
     skin = build_tree(OUT, utf16=True)
-    zpath = os.path.join(ROOT, 'SonoraLyrics.zip')
+    zpath = os.path.join(ROOT, 'RainmeterLyrics.zip')
     if os.path.exists(zpath):
         os.remove(zpath)
     with zipfile.ZipFile(zpath, 'w', zipfile.ZIP_DEFLATED) as z:

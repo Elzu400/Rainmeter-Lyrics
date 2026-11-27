@@ -6,7 +6,7 @@ The mock tests run on a newer Lua, which is more forgiving. A Lua 5.1 script tha
 one of these limits fails to load in Rainmeter, and then nothing the script does works
 (no lyrics, progress bar or visualizer) while plain meters such as title and cover still show.
 
-usage: python3 test/check_lua51.py test_tree/SonoraLyrics/@Resources/lyrics.lua [...]
+usage: python3 test/check_lua51.py test_tree/RainmeterLyrics/@Resources/lyrics.lua [...]
 needs `texluac` (TeX Live) or `luac`.
 """
 import re

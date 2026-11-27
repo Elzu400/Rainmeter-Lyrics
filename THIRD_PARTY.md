@@ -1,6 +1,6 @@
 # Third-party software and services
 
-Rainmeter Lyrics (formerly SonoraLyrics) is licensed under the GNU GPL v3 or later (see `LICENSE`).
+Rainmeter Lyrics is licensed under the GNU GPL v3 or later (see `LICENSE`).
 It builds on the following. None of their source code is part of this repository.
 
 ## Rainmeter plugin: MediaPlayer
