@@ -256,6 +256,38 @@ for _, l in ipairs(LRC) do
 end
 local SYNCED = table.concat(parts, '\\n')   -- the literal backslash-n JSON form
 
+-- MOCK_WS = exact | search | none : where a word-synced (lyricsfile) version exists
+local WS = os.getenv('MOCK_WS') or 'none'
+local function lyricsfile()
+  local y = { "version: '1.0'", 'metadata:', '  title: x', 'lines:' }
+  for i, l in ipairs(LRC) do
+    if l[2] ~= '' and not l[2]:find('\\', 1, true) then
+      local nxt = LRC[i + 1] and LRC[i + 1][1] or (l[1] + 4)
+      local words = {}
+      for w in l[2]:gmatch('%S+') do words[#words + 1] = w end
+      local span = math.min(nxt - l[1] - 0.3, 0.45 * #words)
+      y[#y + 1] = '- text: ' .. (l[2]:find("'") and ("'" .. l[2]:gsub("'", "''") .. "'") or l[2])
+      y[#y + 1] = string.format('  start_ms: %d', math.floor(l[1] * 1000 + 0.5))
+      y[#y + 1] = string.format('  end_ms: %d', math.floor((l[1] + span) * 1000 + 0.5))
+      y[#y + 1] = '  words:'
+      for k, w in ipairs(words) do
+        local txt = (k < #words) and (w .. ' ') or w
+        txt = "'" .. txt:gsub("'", "''") .. "'"
+        y[#y + 1] = '  - text: ' .. txt
+        y[#y + 1] = string.format('    start_ms: %d', math.floor((l[1] + span * (k - 1) / #words) * 1000 + 0.5))
+      end
+    end
+  end
+  return table.concat(y, '\\n')
+end
+-- the record the exact lookup returns
+local function exactRecord()
+  local ws = (WS == 'exact')
+  return '{"id":5,"trackName":"Midnight Drive","artistName":"The Testers","albumName":"A","duration":210.0,"instrumental":false,'
+    .. '"hasWordSync":' .. tostring(ws) .. ',"plainLyrics":"x","syncedLyrics":"' .. SYNCED .. '"'
+    .. (ws and (',"lyricsfile":"' .. lyricsfile() .. '"') or '') .. '}'
+end
+
 dofile(tree .. '/RainmeterLyrics/@Resources/lyrics.lua')
 
 -- ---------- metrics ----------
@@ -301,11 +333,12 @@ local function atTime(t) return math.floor(t * 60) end
 local waitFetchFailed = false
 local SEARCH_MODE = os.getenv('MOCK_SEARCH') or '1'      -- 1 = good results, 0 = empty list, e = request error
 local function searchJson()
-  return '[{"id":11,"trackName":"No Lyrics Here (Live)","artistName":"Nobody","duration":400.0,"instrumental":false,'
+  return '[{"id":11,"trackName":"' .. title .. ' (Live)","artistName":"' .. artist .. '","duration":400.0,"instrumental":false,'
     .. '"plainLyrics":"x","syncedLyrics":"[00:01.00] wrong version"},'
-    .. '{"id":22,"trackName":"No Lyrics Here","artistName":"Nobody","albumName":"A","duration":211.0,"instrumental":false,'
-    .. '"plainLyrics":"x","syncedLyrics":"' .. SYNCED .. '\\n[03:25.00] extra line"},'
-    .. '{"id":33,"trackName":"No Lyrics Here","artistName":"Nobody","duration":210.0,"instrumental":false,'
+    .. '{"id":22,"trackName":"' .. title .. '","artistName":"' .. artist .. '","albumName":"A","duration":211.0,"instrumental":false,'
+    .. '"hasWordSync":' .. tostring(WS == 'search') .. ',"plainLyrics":"x","syncedLyrics":"' .. SYNCED .. '\\n[03:25.00] extra line"'
+    .. (WS == 'search' and (',"lyricsfile":"' .. lyricsfile() .. '"') or '') .. '},'
+    .. '{"id":33,"trackName":"' .. title .. '","artistName":"' .. artist .. '","duration":210.0,"instrumental":false,'
     .. '"plainLyrics":"p","syncedLyrics":null}]'
 end
 local function b64enc(d)
@@ -364,7 +397,7 @@ for f = 1, totalFrames + 200 do
 
   if pendingFetch and f >= pendingFetch then
     pendingFetch = nil
-    if waitFetchFailed or os.getenv('MOCK_GET') == '0' then lyricsRaw = ''; ok, e = pcall(OnFailed) else lyricsRaw = SYNCED; ok, e = pcall(OnFetched) end
+    if waitFetchFailed or os.getenv('MOCK_GET') == '0' then lyricsRaw = ''; ok, e = pcall(OnFailed) else lyricsRaw = exactRecord(); ok, e = pcall(OnFetched) end
     if not ok then err('OnFetched crashed: ' .. tostring(e)) end
     flush()
   end

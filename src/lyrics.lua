@@ -53,7 +53,7 @@ local waiting, lastRaw = false, nil
 local curTitle, curArtist = nil, nil
 local seenSince, fetchPending, waitSince = 0, false, 0
 local trigF, trigM, updF, updM, enabledOnce = nil, 'mLyrics', nil, nil, {}
-local Q = { alt = false, q = '', stage = 0, title = '', artist = '', dur = 0, src = '-', pick = '', order = {}, idx = 0, log = {} }   -- current lyrics request
+local Q = { up = false, alt = false, q = '', stage = 0, title = '', artist = '', dur = 0, src = '-', pick = '', order = {}, idx = 0, log = {} }   -- current lyrics request
 local nextProv                        -- moves on to the next lyrics provider (set below)
 
 -- player time
@@ -511,6 +511,66 @@ local function parseLRC(raw, noEsc)
   return out
 end
 
+-- yaml scalar -> string (plain, 'single quoted' or "double quoted")
+local function yamlStr(v)
+  v = v:gsub('%s+$', '')
+  local c = v:sub(1, 1)
+  if c == "'" then return (v:sub(2, -2):gsub("''", "'")) end
+  if c == '"' then return unescape(v:sub(2, -2)) end
+  return v
+end
+
+-- LRCLIB "lyricsfile" (YAML with a start time for every word) -> same list as parseLRC, or nil
+local function parseLyricsfile(y)
+  local rows, cur, w = {}, nil, nil
+  for line in (y .. '\n'):gmatch('(.-)\n') do
+    line = line:gsub('\r$', '')
+    local lt = line:match('^%- text:%s?(.*)$')
+    if lt then
+      cur = { toks = {} }
+      rows[#rows + 1] = cur
+      w = nil
+    elseif cur then
+      local wtxt = line:match('^  %- text:%s?(.*)$')
+      if wtxt then
+        w = { s = yamlStr(wtxt) }
+        cur.toks[#cur.toks + 1] = w
+      else
+        local ms = line:match('^    start_ms:%s*(%d+)')
+        if ms and w then
+          w.t = tonumber(ms) / 1000
+        else
+          ms = line:match('^  end_ms:%s*(%d+)')
+          if ms then cur.e = tonumber(ms) / 1000 end
+        end
+      end
+    end
+  end
+  local out = {}
+  for i, row in ipairs(rows) do
+    local toks = {}
+    for _, k in ipairs(row.toks) do
+      if k.t and k.s and k.s ~= '' then toks[#toks + 1] = k end
+    end
+    local wt = mergeToks(toks)
+    if #wt > 0 then
+      out[#out + 1] = { t = wt[1].t, text = wtText(wt), wt = wt, e = row.e or (wt[#wt].t + 2) }
+    end
+  end
+  if #out < 3 then return nil end
+  table.sort(out, function(a, b) return a.t < b.t end)
+  -- an empty marker line where the singing stops, so long breaks show the pause note like LRC does
+  local res = {}
+  for i, ln in ipairs(out) do
+    res[#res + 1] = ln
+    local nxt = out[i + 1]
+    if not nxt or nxt.t - ln.e > 3.5 then
+      res[#res + 1] = { t = max(ln.e, ln.wt[#ln.wt].t + 0.3), text = '' }
+    end
+  end
+  return res
+end
+
 -- true for empty lines and lines that are only note symbols / punctuation
 local function isPause(text)
   local s = text:gsub('\226\153[\169-\172]', ''):gsub('[%s%p]', '')
@@ -870,7 +930,13 @@ end
 -- the objects of the JSON array that follows "key": as separate strings
 local function splitObjs(raw, key)
   local out = {}
-  local _, e = raw:find('"' .. key .. '"%s*:%s*%[')
+  local e
+  if key then
+    local _
+    _, e = raw:find('"' .. key .. '"%s*:%s*%[')
+  else
+    e = raw:find('[', 1, true)
+  end
   if not e then return out end
   local depth, inStr, esc, start = 0, false, false, nil
   for i = e + 1, #raw do
@@ -945,7 +1011,7 @@ end
 local function fetch(title, artist)
   Q.title, Q.artist, Q.src, Q.pick = title, artist, '-', ''
   Q.dur = readTime(mDuration)
-  Q.log, Q.idx, Q.order = {}, 0, {}
+  Q.log, Q.idx, Q.order, Q.up = {}, 0, {}, false
   for name in tostring(C.order):gmatch('[%w]+') do
     if name == 'lrclib' or name == 'kugou' then Q.order[#Q.order + 1] = name end
   end
@@ -976,38 +1042,47 @@ local function snip(raw)
 end
 
 -- choose the best synced result of a search response (a JSON array); returns raw lyrics or nil
-local function pickBest(raw)
-  local starts = {}
-  local init = 1
-  while true do
-    local p = raw:find('{"id":', init, true)
-    if not p then break end
-    starts[#starts + 1] = p
-    init = p + 6
+-- one LRCLIB record -> parsed lyrics, a key that changes with the lyrics, and whether it is
+-- word-synced. Word timing (the "lyricsfile") is used when the record has it, otherwise the
+-- usual line-synced text.
+local function fromRecord(chunk, wordOnly)
+  if chunk:find('"hasWordSync"%s*:%s*true') then
+    local lf = jstr(chunk, 'lyricsfile')
+    local parsed = lf and lf ~= '' and parseLyricsfile(unescape(lf))
+    if parsed then return parsed, lf, true end
   end
-  local qt, qa = normName(Q.title:gsub('%s*[%(%[].-[%)%]]', '')), normName(Q.artist)
-  if qt == '' then qt = normName(Q.title) end
-  local best, bestScore, bestId
-  for i, p in ipairs(starts) do
-    local chunk = raw:sub(p, (starts[i + 1] or (#raw + 1)) - 1)
-    local synced = jstr(chunk, 'syncedLyrics')
-    if synced and synced ~= '' and not chunk:find('"instrumental":true', 1, true) then
-      local nt, na = normName(jstr(chunk, 'trackName')), normName(jstr(chunk, 'artistName'))
-      local d = jnum(chunk, 'duration')
-      local diff = (d and Q.dur > 0) and math.abs(d - Q.dur) or nil
-      local titleOk = (nt ~= '' and qt ~= '') and (nt == qt or nt:find(qt, 1, true) or qt:find(nt, 1, true))
-      if titleOk and (diff == nil or diff <= 6) then
-        local score = (nt == qt and 30 or 15)
-        if na ~= '' and qa ~= '' and (na == qa or na:find(qa, 1, true) or qa:find(na, 1, true)) then score = score + 20 end
-        if diff then score = score - diff * 3 end
-        if not bestScore or score > bestScore then
-          best, bestScore, bestId = synced, score, jnum(chunk, 'id')
-        end
+  if wordOnly then return nil end
+  local synced = jstr(chunk, 'syncedLyrics')
+  if synced and synced ~= '' then
+    local parsed = parseLRC(synced)
+    if #parsed > 0 then return parsed, synced, false end
+  end
+end
+
+-- best matching record of a search answer; a word-synced version wins over a line-synced one
+-- (wordOnly: only word-synced ones count). Returns parsed, key, isWord.
+local function pickBest(raw, wordOnly)
+  local cands = {}
+  for _, chunk in ipairs(splitObjs(raw, nil)) do
+    if not chunk:find('"instrumental"%s*:%s*true') then
+      local sc = matchScore(jstr(chunk, 'trackName') or '', jstr(chunk, 'artistName') or '', jnum(chunk, 'duration'))
+      if sc then
+        local word = chunk:find('"hasWordSync"%s*:%s*true') ~= nil
+        if word or not wordOnly then cands[#cands + 1] = { chunk = chunk, sc = sc, word = word } end
       end
     end
   end
-  Q.pick = tostring(bestId or '')
-  return best
+  table.sort(cands, function(x, y)
+    if x.word ~= y.word then return x.word end
+    return x.sc > y.sc
+  end)
+  for _, c in ipairs(cands) do
+    local parsed, key, isWord = fromRecord(c.chunk, wordOnly)
+    if parsed then
+      Q.pick = tostring(jnum(c.chunk, 'id') or '')
+      return parsed, key, isWord
+    end
+  end
 end
 
 -- search keywords with the usual decorations removed
@@ -1081,27 +1156,48 @@ end
 function OnFetched()
   if not (waiting and Q.stage == 1) then return end
   local raw = measureText('mLyrics')
-  if not accept(raw, 'lrclib') then lg('lrclib exact: no synced lyrics (' .. #raw .. ' bytes) ' .. snip(raw)); startSearch() end
+  local parsed, key, isWord = fromRecord(raw)
+  if not (parsed and acceptParsed(parsed, 'lrclib', key)) then
+    lg('lrclib exact: no synced lyrics (' .. #raw .. ' bytes) ' .. snip(raw))
+    startSearch()
+    return
+  end
+  -- line-synced only: the lyrics are on screen already; look for a word-synced version of the
+  -- same song in the background and swap it in if there is one
+  if not isWord then
+    Q.up = true
+    startSearch()
+  end
 end
 
 function OnSearched()
-  if not (waiting and Q.stage == 2) then return end
+  if not ((waiting or Q.up) and Q.stage == 2) then return end
   local raw = measureText('mSearch')
-  local best = pickBest(raw)
-  if not (best and accept(best, 'lrclib')) then
-    lg('lrclib search' .. (Q.alt and ' (keywords)' or ' (title)') .. ': no match (' .. #raw .. ' bytes) ' .. snip(raw))
-    if not Q.alt and Q.q and Q.q ~= '' then
-      Q.alt = true
-      SKIN:Bang('!SetVariable', 'LyricsSearchURL', 'https://lrclib.net/api/search?q=' .. urlenc(Q.q))
-      trigF, trigM = frame + 3, 'mSearch'
-    else
-      nextProv()
-    end
+  local parsed, key = pickBest(raw, Q.up)
+  if parsed and acceptParsed(parsed, 'lrclib', key) then
+    Q.up = false
+    return
+  end
+  lg('lrclib ' .. (Q.up and 'word-sync search' or 'search') .. (Q.alt and ' (keywords)' or ' (title)')
+     .. ': no match (' .. #raw .. ' bytes) ' .. snip(raw))
+  if not Q.alt and Q.q and Q.q ~= '' then
+    Q.alt = true
+    SKIN:Bang('!SetVariable', 'LyricsSearchURL', 'https://lrclib.net/api/search?q=' .. urlenc(Q.q))
+    trigF, trigM = frame + 3, 'mSearch'
+  elseif Q.up then
+    Q.up = false                        -- nothing better: keep the lyrics that are showing
+  else
+    nextProv()
   end
 end
 
 function OnSearchFailed()
-  if waiting and Q.stage == 2 then lg('lrclib search: request failed'); nextProv() end
+  if Q.up and Q.stage == 2 then
+    Q.up = false
+  elseif waiting and Q.stage == 2 then
+    lg('lrclib search: request failed')
+    nextProv()
+  end
 end
 
 function OnKgSearched()
@@ -1613,6 +1709,7 @@ local function trackTick(now)
     setMode(false)
     waiting, trigF, updF = false, nil, nil
     Q.stage = 0
+    Q.up = false
     fetchPending = (title ~= '' and artist ~= '')
   end
 

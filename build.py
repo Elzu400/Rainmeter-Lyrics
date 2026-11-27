@@ -172,7 +172,8 @@ BandIdx=%d
 Measure=WebParser
 URL=#LyricsURL#
 UserAgent=RainmeterLyrics/5.0 (https://github.com/Elzu400/rainmeter-lyrics)
-RegExp=(?s)"syncedLyrics":"((?:[^"\\\\]|\\\\.)*)"
+; the whole record (the skin picks the lyrics, plain or word-synced, out of it)
+RegExp=(?s)(.*)
 StringIndex=1
 CodePage=65001
 UpdateRate=-1
