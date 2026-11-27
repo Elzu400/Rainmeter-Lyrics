@@ -19,27 +19,27 @@ CLASSIC = {
     'FadeZone': '50', 'FocusPos': '40',
 }
 SLIM = {
-    'PillWidth': '780', 'PillHeight': '44', 'CornerRadius': '22',
-    'ShowCover': '1', 'CoverSize': '30', 'CoverRadius': '9', 'Padding': '8', 'CoverGap': '10',
-    'FontSize': '13', 'ProgressHeight': '2', 'ProgressBottom': '5', 'TextNudgeY': '2',
+    'PillWidth': '780', 'PillHeight': '52', 'CornerRadius': '24',
+    'ShowCover': '1', 'CoverSize': '34', 'CoverRadius': '11', 'Padding': '8', 'CoverGap': '10',
+    'FontSize': '13', 'ProgressHeight': '3', 'ProgressBottom': '5', 'TextNudgeY': '2',
     'VisBarWidth': '3', 'VisGap': '3', 'VisHeight': '18',
-    'PillRadius': '8', 'PillPadX': '8', 'WordSpacing': '5', 'LineGap': '20',
+    'PillRadius': '8', 'PillPadX': '8', 'WordSpacing': '6', 'LineGap': '20',
     'FadeZone': '60', 'FocusPos': '38',
 }
 COMMON = {
-    'ShowProgress': '1', 'RightPanel': 'vis', 'CtlHold': '1500', 'FontFace': 'Segoe UI', 'FontWeight': '700',
-    'LyricMode': 'paged', 'PageWords': '2', 'PillWords': '1', 'PillStyle': '0', 'PillPadY': '2',
-    'CamSmooth': '450', 'PillSpeed': '110', 'LyricsOffset': '0', 'PositionUnit': '1',
-    'FPS': '60', 'VisSensitivity': '35', 'Debug': '0',
-    'ColorMode': 'manual', 'BgColor': '20,18,28', 'BgAlpha': '190', 'TextColor': '255,255,255',
-    'AccentColor': '150,110,255', 'PillAlpha': '235',
+    'ShowProgress': '1', 'RightPanel': 'combined', 'CtlHold': '500', 'FontFace': 'Segoe UI', 'FontWeight': '700',
+    'LyricMode': 'paged', 'PageWords': '1', 'PillWords': '1', 'PillStyle': '1', 'PillPadY': '2',
+    'CamSmooth': '250', 'PillSpeed': '100', 'LyricsOffset': '0', 'PositionUnit': '1',
+    'FPS': '60', 'VisSensitivity': '50', 'Debug': '0',
+    'ColorMode': 'manual', 'BgColor': '20,18,28', 'BgAlpha': '166', 'TextColor': '255,255,255',
+    'AccentColor': '255,100,160', 'PillAlpha': '107',
     'WallMinSat': '45', 'WallTintBg': '1', 'WallRefreshMin': '0',
 }
 PALETTE = [(150, 110, 255), (90, 150, 255), (60, 200, 220), (80, 200, 130),
            (230, 190, 70), (255, 140, 70), (255, 100, 160), (200, 200, 215)]
 
 DEFAULTS = {}
-DEFAULTS.update(CLASSIC)
+DEFAULTS.update(SLIM)                          # the out-of-the-box look is the Slim preset
 DEFAULTS.update(COMMON)
 ORDER = sorted(DEFAULTS)                      # WallAvg is written only by the lyrics skin
 
@@ -96,6 +96,7 @@ Information=Pill lyrics for Sonora (LRCLIB + MediaPlayer). Right-click the skin 
 @Include=#@#Settings.inc
 ; set at runtime by lyrics.lua
 LyricsURL=https://lrclib.net/api/get
+LyricsSearchURL=https://lrclib.net/api/search
 DimColor=175,175,195,165
 
 ; ====================== MEASURES ======================
@@ -168,7 +169,7 @@ BandIdx=%d
 [mLyrics]
 Measure=WebParser
 URL=#LyricsURL#
-UserAgent=SonoraLyrics/5.0 (Rainmeter skin)
+UserAgent=RainmeterLyrics (https://github.com/Elzu400/rainmeter-lyrics)
 RegExp=(?s)"syncedLyrics":"((?:[^"\\\\]|\\\\.)*)"
 StringIndex=1
 UpdateRate=-1
@@ -178,6 +179,19 @@ FinishAction=[!CommandMeasure mScript "OnFetched()"]
 OnConnectErrorAction=[!CommandMeasure mScript "OnFailed()"]
 OnRegExpErrorAction=[!CommandMeasure mScript "OnFailed()"]
 OnDownloadErrorAction=[!CommandMeasure mScript "OnFailed()"]
+
+; ---- fallback: LRCLIB search, used when the exact lookup above finds nothing ----
+[mSearch]
+Measure=WebParser
+URL=#LyricsSearchURL#
+UserAgent=RainmeterLyrics (https://github.com/Elzu400/rainmeter-lyrics)
+UpdateRate=-1
+DynamicVariables=1
+Disabled=1
+FinishAction=[!CommandMeasure mScript "OnSearched()"]
+OnConnectErrorAction=[!CommandMeasure mScript "OnSearchFailed()"]
+OnRegExpErrorAction=[!CommandMeasure mScript "OnSearchFailed()"]
+OnDownloadErrorAction=[!CommandMeasure mScript "OnSearchFailed()"]
 
 ; ---- average wallpaper colour (only run when Color source = Wallpaper) ----
 [mWall]

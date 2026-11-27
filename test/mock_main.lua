@@ -14,13 +14,17 @@ for line in readFile(tree .. '/SonoraLyrics/@Resources/Settings.inc'):gmatch('[^
   local k, v = line:match('^([%w_]+)=(.*)$')
   if k then VARS[k] = v end
 end
-if preset == 'slim' then
-  local SLIM = { PillWidth = '780', PillHeight = '44', CornerRadius = '22', CoverSize = '30', CoverRadius = '9',
-    Padding = '8', CoverGap = '10', FontSize = '13', ProgressHeight = '2', ProgressBottom = '5', TextNudgeY = '2',
-    VisBarWidth = '3', VisGap = '3', VisHeight = '18', PillRadius = '8', PillPadX = '8', WordSpacing = '5',
-    LineGap = '20', FadeZone = '60', FocusPos = '38' }
-  for k, v in pairs(SLIM) do VARS[k] = v end
-end
+local PRESETS = {
+  slim = { PillWidth = '780', PillHeight = '52', CornerRadius = '24', CoverSize = '34', CoverRadius = '11',
+    Padding = '8', CoverGap = '10', FontSize = '13', ProgressHeight = '3', ProgressBottom = '5', TextNudgeY = '2',
+    VisBarWidth = '3', VisGap = '3', VisHeight = '18', PillRadius = '8', PillPadX = '8', WordSpacing = '6',
+    LineGap = '20', FadeZone = '60', FocusPos = '38' },
+  classic = { PillWidth = '520', PillHeight = '74', CornerRadius = '20', CoverSize = '48', CoverRadius = '10',
+    Padding = '13', CoverGap = '14', FontSize = '15', ProgressHeight = '3', ProgressBottom = '13', TextNudgeY = '4',
+    VisBarWidth = '4', VisGap = '3', VisHeight = '28', PillRadius = '10', PillPadX = '10', WordSpacing = '6',
+    LineGap = '24', FadeZone = '50', FocusPos = '40' },
+}
+for k, v in pairs(PRESETS[preset] or {}) do VARS[k] = v end
 if os.getenv('MOCK_WORDS') then VARS.PillWords = os.getenv('MOCK_WORDS') end
 if os.getenv('MOCK_DEBUG') then VARS.Debug = '1' end
 if os.getenv('MOCK_WALL') then VARS.ColorMode = 'wallpaper' end
@@ -65,7 +69,23 @@ local function err(msg) errors[#errors + 1] = msg; if #errors < 15 then io.stder
 local songT, playing = 0, true
 local title, artist = 'Midnight Drive', 'The Testers'
 local lyricsRaw = ''
+local searchRaw = ''
 local band = { 0, 0, 0, 0, 0, 0, 0, 0 }
+
+local snap = { nextS = 0.2, val = 0, k = 0 }
+local function reportedPos()
+  if os.getenv('MOCK_JITTER') ~= '1' then return songT end
+  if songT < snap.val - 0.5 or songT > snap.val + 3 then          -- seek or pause: resync at once
+    snap.val, snap.nextS = math.floor(songT), songT + 0.5
+  end
+  while songT >= snap.nextS do
+    snap.k = snap.k + 1
+    snap.val = math.floor(snap.nextS)
+    local noise = math.abs((math.sin(snap.k * 12.9898) * 43758.5453) % 1)
+    snap.nextS = snap.nextS + 1 + 0.4 * (noise * 2 - 1)           -- the player is polled at irregular intervals
+  end
+  return snap.val
+end
 
 local function mm(t) return string.format('%02d:%02d', math.floor(t / 60), math.floor(t % 60)) end
 
@@ -75,12 +95,15 @@ end
 local MS = {
   mTitle = mk(function() return title end, function() return 0 end),
   mArtist = mk(function() return artist end, function() return 0 end),
-  mPosition = mk(function() return mm(songT) end, function() return math.floor(songT) end),
+  -- MOCK_JITTER=1: the player reports whole seconds, each one arriving up to 0.4 s late and by a
+  -- different amount every second (like a real media session), so the skin's estimate wobbles.
+  mPosition = mk(function() return mm(reportedPos()) end, function() return math.floor(reportedPos()) end),
   mDuration = mk(function() return '03:30' end, function() return 210 end),
   mState = mk(function() return playing and '1' or '0' end, function() return playing and 1 or 0 end),
   mProgress = mk(function() return tostring(songT / 210 * 100) end, function() return songT / 210 * 100 end),
   mCover = mk(function() return '' end, function() return 0 end),
   mLyrics = mk(function() return lyricsRaw end, function() return 0 end),
+  mSearch = mk(function() return searchRaw end, function() return 0 end),
   mWall = mk(function() return '40,90,160' end, function() return 0 end),
 }
 for i = 1, 8 do MS['mBand' .. i] = mk(function() return '' end, function() return band[i] end) end
@@ -130,7 +153,7 @@ local function tokenize(cmd)
   return toks
 end
 
-local pendingFetch, pendingWall = nil, nil
+local pendingFetch, pendingWall, pendingSearch = nil, nil, nil
 local frame = 0
 local writes = {}
 
@@ -163,6 +186,7 @@ local function runBang(cmd)
     if not measures[t[2]] then err('unknown measure ' .. tostring(t[2])) end
   elseif b == '!CommandMeasure' then
     if t[2] == 'mLyrics' and t[3] == 'Update' then pendingFetch = frame + 20
+    elseif t[2] == 'mSearch' and t[3] == 'Update' then pendingSearch = frame + 25
     elseif t[2] == 'mWall' and t[3] == 'Run' then pendingWall = frame + 10
     else err('unexpected CommandMeasure ' .. cmd) end
   elseif b == '!WriteKeyValue' then
@@ -211,6 +235,10 @@ local LRC = {
   { 70.0, 'And when the morning comes around again' },
   { 76.0, 'We will still be here' },
 }
+if os.getenv('MOCK_FAST') then          -- a fast song: a new line every 1.1 s
+  LRC = {}
+  for n = 1, 60 do LRC[#LRC + 1] = { 8 + (n - 1) * 1.1, string.format('L%02dx beta gamma delta epsilon zeta', n) } end
+end
 local parts = {}
 for _, l in ipairs(LRC) do
   parts[#parts + 1] = string.format('[%02d:%05.2f] %s', math.floor(l[1] / 60), l[1] % 60, l[2])
@@ -250,7 +278,7 @@ end
 local barX = tonumber(VARS.Padding) + (VARS.ShowCover == '1' and tonumber(VARS.CoverSize) + tonumber(VARS.CoverGap) or 0)
 
 local lastPa
-local stats = { frames = 0, maxPillStep = 0, maxWordStep = 0, sumVis = 0, maxVis = 0, pillOut = 0, cmds = 0, maxCmds = 0, snaps = 0 }
+local stats = { backSteps = 0, backPx = 0, maxBack = 0, frames = 0, maxPillStep = 0, maxWordStep = 0, sumVis = 0, maxVis = 0, pillOut = 0, cmds = 0, maxCmds = 0, snaps = 0 }
 local lastPillL, lastWordX, trackedWord = nil, nil, nil
 local shots = {}
 local events = {}
@@ -260,6 +288,15 @@ local totalFrames = math.floor(seconds * 60)
 local function atTime(t) return math.floor(t * 60) end
 
 local waitFetchFailed = false
+local SEARCH_MODE = os.getenv('MOCK_SEARCH') or '1'      -- 1 = good results, 0 = empty list, e = request error
+local function searchJson()
+  return '[{"id":11,"trackName":"No Lyrics Here (Live)","artistName":"Nobody","duration":400.0,"instrumental":false,'
+    .. '"plainLyrics":"x","syncedLyrics":"[00:01.00] wrong version"},'
+    .. '{"id":22,"trackName":"No Lyrics Here","artistName":"Nobody","albumName":"A","duration":211.0,"instrumental":false,'
+    .. '"plainLyrics":"x","syncedLyrics":"' .. SYNCED .. '\\n[03:25.00] extra line"},'
+    .. '{"id":33,"trackName":"No Lyrics Here","artistName":"Nobody","duration":210.0,"instrumental":false,'
+    .. '"plainLyrics":"p","syncedLyrics":null}]'
+end
 local startSong = 0
 for f = 1, totalFrames + 200 do
   frame = f
@@ -288,6 +325,16 @@ for f = 1, totalFrames + 200 do
     if not ok then err('OnFetched crashed: ' .. tostring(e)) end
     flush()
   end
+  if pendingSearch and f >= pendingSearch then
+    pendingSearch = nil
+    if SEARCH_MODE == 'e' then ok, e = pcall(OnSearchFailed)
+    else
+      searchRaw = (SEARCH_MODE == '0') and '[]' or searchJson()
+      ok, e = pcall(OnSearched)
+    end
+    if not ok then err('OnSearched crashed: ' .. tostring(e)) end
+    flush()
+  end
   if pendingWall and f >= pendingWall then
     pendingWall = nil
     ok, e = pcall(OnWallpaper)
@@ -303,6 +350,19 @@ for f = 1, totalFrames + 200 do
   local pill = meters.Pill
   local pl, pr = parsePill(pill.opts.PillPath)
   local vis = snapshot()
+  if os.getenv('MOCK_FAST') and songT > 0 then
+    for _, v in ipairs(vis) do
+      local n = tonumber(v.text:match('^L(%d+)x$'))
+      if n and n >= 2 then
+        FAST = FAST or {}
+        local r = FAST[n] or {}
+        FAST[n] = r
+        local rel = songT - (8 + (n - 1) * 1.1)
+        if not r.first then r.first = rel end
+        if not r.full and v.a >= 112 then r.full = rel end
+      end
+    end
+  end
   local settled = (songT > 12 and not pill.hidden and pl)
   if settled then
     stats.sumVis = stats.sumVis + #vis
@@ -310,8 +370,13 @@ for f = 1, totalFrames + 200 do
     -- track pill motion (only while no seek happened this frame)
     local seekFrame = (f == atTime(52) or f == atTime(60) or f == atTime(74))
     local pa = tonumber((pill.opts.Shape or ''):match('Fill Color %d+,%d+,%d+,(%d+)')) or 0
-    if lastPillL and not seekFrame and pa >= 200 and (lastPa or 0) >= 200 then
+    if lastPillL and not seekFrame and pa >= 100 and (lastPa or 0) >= 100 then
       stats.maxPillStep = math.max(stats.maxPillStep, math.abs(pl - lastPillL))
+      if pl < lastPillL - 0.05 then
+        stats.backSteps = stats.backSteps + 1
+        stats.backPx = stats.backPx + (lastPillL - pl)
+        stats.maxBack = math.max(stats.maxBack, lastPillL - pl)
+      end
     end
     lastPillL, lastPa = pl, pa
     -- track one word's x
@@ -349,6 +414,16 @@ end
 for _, s in ipairs(shots) do print(s) end
 print(string.format('frames=%d avgVisibleWords=%.1f maxVisible=%d', stats.frames, stats.sumVis / math.max(1, stats.frames), stats.maxVis))
 print(string.format('max pill step/frame=%.2f px   max word step/frame=%.2f px', stats.maxPillStep, stats.maxWordStep))
+if FAST then
+  local f, u, c = {}, {}, 0
+  for n, r in pairs(FAST) do if n < 50 and r.first and r.full then f[#f + 1] = r.first; u[#u + 1] = r.full end end
+  table.sort(f); table.sort(u)
+  if #f > 0 then
+    print(string.format('fast lines (%d): new line first visible %.2fs (median) / %.2fs (worst) after its first word; fully visible %.2fs / %.2fs',
+      #f, f[math.ceil(#f / 2)], f[#f], u[math.ceil(#u / 2)], u[#u]))
+  end
+end
+print(string.format('pill moved backwards: %d frames, %.1f px total, worst %.2f px/frame', stats.backSteps, stats.backPx, stats.maxBack))
 print(string.format('bangs/frame avg=%.1f max=%d', stats.cmds / math.max(1, stats.frames), stats.maxCmds))
 print('writes:', #writes, writes[1] and writes[1]:sub(1, 90) or '')
 print('errors:', #errors)

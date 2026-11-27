@@ -12,8 +12,9 @@ current lyric line, a progress bar and a small 4-band audio visualizer.
 
 ## Features
 
-- Synced lyrics from [LRCLIB](https://lrclib.net), falling back to the song title and
-  artist when no lyrics are found.
+- Synced lyrics from [LRCLIB](https://lrclib.net). If the exact lookup finds nothing, it tries
+  LRCLIB's search (tolerant of "feat.", "- Live" and spelling differences, and matched by song
+  length so the wrong version is rejected), then falls back to the song title and artist.
 - **Paged lyric style (default):** one line stays still while a highlight glides across
   its words. Long lines shift only as much as needed; lines cross-fade into each other.
   Calm, with no constant scrolling.
@@ -22,7 +23,7 @@ current lyric line, a progress bar and a small 4-band audio visualizer.
 - Optional **playback controls** (previous, play/pause, next) in place of the visualizer, for the Slim layout.
 - **Combined** mode (Slim): shows the visualizer, (8 bars, sized to fill the space the buttons use) swaps to the controls while the mouse is over it, and goes back after a short delay (adjustable on the Motion tab).
 - Smooth progress bar and a 4-band visualizer.
-- A built-in settings window: size, presets (**Classic** and **Slim**), fonts, highlight
+- A built-in settings window: size, presets (**Slim** is the default, **Classic** is the original taller look), fonts, highlight
   shape, timing offset, colors, frame rate (60 fps by default).
 - Colors: choose them by hand, or average them from your wallpaper.
 
@@ -88,7 +89,12 @@ python build.py
 texlua test/mock_main.lua test_tree classic 90
 texlua test/mock_main.lua test_tree slim 90
 texlua test/mock_settings.lua test_tree
+python3 test/check_lua51.py test_tree/SonoraLyrics/@Resources/lyrics.lua test_tree/SonoraLyrics/@Resources/settings.lua
 ```
+
+The last command checks the limits of Lua 5.1, the version Rainmeter embeds (for example at most 60
+upvalues per function). A script over a limit fails to load in Rainmeter even though the mock tests,
+which run on a newer Lua, pass. It needs `texluac` or `luac`.
 
 These tests catch logic errors, but they cannot reproduce real Rainmeter rendering. Please
 report anything that looks off on a real desktop.

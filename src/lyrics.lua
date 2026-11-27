@@ -44,14 +44,16 @@ local lastPill, lastFill = nil, nil
 -- paged mode: one lyric line ("page") at a time
 local pF, pL = {}, {}                 -- first / last word index of the page each word belongs to
 local curPage, pgFade, pgStart, pgReady, pgSnap = nil, 0, 0, false, true
+local pgScreenR, pgScreenL = nil, nil  -- on-screen position of the pill's edges last frame
 local PAGE_PAST, PAGE_FUTURE = 235, 125
-local OUT_T, IN_T = 0.14, 0.22        -- cross-fade seconds between lines
+local OUT_MAX, IN_MAX = 0.14, 0.22    -- longest cross-fade seconds between lines (shorter for fast lines)
 
 -- lyrics download
 local waiting, lastRaw = false, nil
 local curTitle, curArtist = nil, nil
 local seenSince, fetchPending, waitSince = 0, false, 0
-local trigF, updF, enabledOnce = nil, nil, false
+local trigF, trigM, updF, updM, enabledOnce = nil, 'mLyrics', nil, nil, {}
+local Q = { stage = 0, title = '', artist = '', dur = 0, src = '-', pick = '' }   -- current lyrics request
 
 -- player time
 local lastPos, lastClock, disp, firstTime, wasPlaying = -1, 0, 0, true, false
@@ -597,6 +599,7 @@ local function resetLayout()
   wx, ww, act = {}, {}, {}
   cam, camV, lastGi = nil, 0, nil
   curPage, pgFade, pgReady, pgSnap = nil, 0, false, true
+  pgScreenR, pgScreenL = nil, nil
   appear, startClock = 0, os.clock()
   lastPill, lastFill = nil, nil
   for m = 1, N do S[m] = {} end
@@ -794,21 +797,97 @@ local function isPlaying()
   return st == '1' or st:find('play') ~= nil
 end
 
+-- ---------- lyrics request: LRCLIB exact lookup first, LRCLIB search as a fallback ----------
+
+-- read one JSON string value out of a chunk of text; the result stays JSON-escaped
+local function jstr(chunk, key)
+  local _, e = chunk:find('"' .. key .. '":"', 1, true)
+  if not e then return nil end
+  local i = e + 1
+  while true do
+    local q = chunk:find('"', i, true)
+    if not q then return nil end
+    local bs, j = 0, q - 1
+    while j >= i and chunk:byte(j) == 92 do bs = bs + 1; j = j - 1 end
+    if bs % 2 == 0 then return chunk:sub(e + 1, q - 1) end
+    i = q + 1
+  end
+end
+
+local function jnum(chunk, key)
+  return tonumber(chunk:match('"' .. key .. '":%s*(%-?[%d%.]+)'))
+end
+
+local function normName(x)
+  return (unescape(x or ''):lower():gsub('[%s%p]', ''))
+end
+
 local function fetch(title, artist)
   local t = (title:gsub('%s*[%(%[].-[%)%]]', ''))
   t = (t:gsub('%s+%-%s+[Rr]emaster.*$', ''))
   if t == '' then t = title end
   local url = 'https://lrclib.net/api/get?artist_name=' .. urlenc(artist)
               .. '&track_name=' .. urlenc(t)
+  Q.stage, Q.title, Q.artist, Q.src, Q.pick = 1, title, artist, '-', ''
+  Q.dur = readTime(mDuration)
   -- Set the URL now, trigger the download a few frames later so the measure has re-read
   -- its dynamic URL (starting it in the same instant used the old one).
   SKIN:Bang('!SetVariable', 'LyricsURL', url)
-  trigF = frame + 3
+  trigF, trigM = frame + 3, 'mLyrics'
+end
+
+-- the exact lookup found nothing: ask LRCLIB's search, which tolerates different spellings
+local function startSearch()
+  Q.stage = 2
+  local t = (Q.title:gsub('%s*[%(%[].-[%)%]]', ''))
+  t = (t:gsub('%s+%-%s+.*$', ''))                     -- "Song - Live", "Song - Remix" ...
+  t = (t:gsub('%s+[Ff]e?a?t%.?%s+.*$', ''))           -- "Song feat. X"
+  if t == '' then t = Q.title end
+  local a = Q.artist:gsub('%s*[,&;/].*$', ''):gsub('%s+[Ff]e?a?t%.?%s+.*$', '')
+  if a == '' then a = Q.artist end
+  SKIN:Bang('!SetVariable', 'LyricsSearchURL',
+    'https://lrclib.net/api/search?track_name=' .. urlenc(t) .. '&artist_name=' .. urlenc(a))
+  trigF, trigM = frame + 3, 'mSearch'
+end
+
+-- choose the best synced result of a search response (a JSON array); returns raw lyrics or nil
+local function pickBest(raw)
+  local starts = {}
+  local init = 1
+  while true do
+    local p = raw:find('{"id":', init, true)
+    if not p then break end
+    starts[#starts + 1] = p
+    init = p + 6
+  end
+  local qt, qa = normName(Q.title:gsub('%s*[%(%[].-[%)%]]', '')), normName(Q.artist)
+  if qt == '' then qt = normName(Q.title) end
+  local best, bestScore, bestId
+  for i, p in ipairs(starts) do
+    local chunk = raw:sub(p, (starts[i + 1] or (#raw + 1)) - 1)
+    local synced = jstr(chunk, 'syncedLyrics')
+    if synced and synced ~= '' and not chunk:find('"instrumental":true', 1, true) then
+      local nt, na = normName(jstr(chunk, 'trackName')), normName(jstr(chunk, 'artistName'))
+      local d = jnum(chunk, 'duration')
+      local diff = (d and Q.dur > 0) and math.abs(d - Q.dur) or nil
+      local titleOk = (nt ~= '' and qt ~= '') and (nt == qt or nt:find(qt, 1, true) or qt:find(nt, 1, true))
+      if titleOk and (diff == nil or diff <= 6) then
+        local score = (nt == qt and 30 or 15)
+        if na ~= '' and qa ~= '' and (na == qa or na:find(qa, 1, true) or qa:find(na, 1, true)) then score = score + 20 end
+        if diff then score = score - diff * 3 end
+        if not bestScore or score > bestScore then
+          best, bestScore, bestId = synced, score, jnum(chunk, 'id')
+        end
+      end
+    end
+  end
+  Q.pick = tostring(bestId or '')
+  return best
 end
 
 -- ---------- called by WebParser / RunCommand ----------
 
-function OnFailed()
+local function failFinal()
   lastRaw = nil
   if waiting then
     waiting = false
@@ -817,16 +896,38 @@ function OnFailed()
   end
 end
 
+local function accept(raw, src)
+  if raw == '' or raw == lastRaw then return false end
+  local parsed = parseLRC(raw)
+  if #parsed == 0 then return false end
+  lastRaw = raw
+  waiting = false
+  Q.src = src
+  loadWords(parsed)
+  setMode(true)
+  return true
+end
+
+function OnFailed()
+  if waiting and Q.stage == 1 then startSearch() return end
+  failFinal()
+end
+
 function OnFetched()
   if not waiting then return end
   local raw = SKIN:GetMeasure('mLyrics'):GetStringValue() or ''
-  if raw == '' or raw == lastRaw then OnFailed() return end
-  local parsed = parseLRC(raw)
-  if #parsed == 0 then OnFailed() return end
-  lastRaw = raw
-  waiting = false
-  loadWords(parsed)
-  setMode(true)
+  if not accept(raw, 'get') then OnFailed() end
+end
+
+function OnSearched()
+  if not waiting then return end
+  local raw = SKIN:GetMeasure('mSearch'):GetStringValue() or ''
+  local best = pickBest(raw)
+  if not (best and accept(best, 'search')) then failFinal() end
+end
+
+function OnSearchFailed()
+  failFinal()
 end
 
 function OnWallpaper()
@@ -1021,6 +1122,19 @@ local function lyricFrame(now, dt, t, cmd)
 end
 
 -- ---- paged mode: one static line, a highlight that glides across it ----
+-- how long a line is on screen (start of its first word to the start of the next line)
+local function pageDur(F)
+  local nf = pL[F] + 1
+  if nf <= nw then return max(0.2, words[nf].t - words[F].t) end
+  return 3
+end
+
+-- fade times for the line being shown: a fraction of its length, so quick lines switch quickly
+local function pageFades(F)
+  local d = pageDur(F)
+  return clamp(d * 0.08, 0.05, OUT_MAX), clamp(d * 0.12, 0.08, IN_MAX)
+end
+
 local function lyricFramePaged(now, dt, t, cmd)
   if nw == 0 then return end
   local boxW = L.barW
@@ -1030,14 +1144,20 @@ local function lyricFramePaged(now, dt, t, cmd)
 
   -- which page should be on screen; cross-fade when it changes
   local kw = findWord(t)
+  -- The next line starts fading in slightly *before* its first word, so it is already readable
+  -- when the singing reaches it instead of appearing half way through.
   local tgt = pF[kw]
+  if curPage then
+    local outT, inT = pageFades(curPage)
+    tgt = pF[findWord(t + min(0.18, outT + inT * 0.3))]
+  end
   if curPage == nil then
     curPage, pgFade, pgReady, pgSnap, pgStart = tgt, 0, false, true, now
   elseif tgt ~= curPage then
     if not pgReady then
       curPage, pgFade, pgSnap, pgStart = tgt, 0, true, now
     else
-      pgFade = pgFade - dt / OUT_T
+      pgFade = pgFade - dt / (pageFades(curPage))
       if pgFade <= 0 then
         curPage, pgFade, pgReady, pgSnap, pgStart = tgt, 0, false, true, now
       end
@@ -1052,7 +1172,10 @@ local function lyricFramePaged(now, dt, t, cmd)
     for k = F, top do if not ww[k] then ok = false end end
     if ok or now - pgStart > 0.8 then pgReady = true end
   end
-  if pgReady and tgt == curPage then pgFade = min(1, pgFade + dt / IN_T) end
+  if pgReady and tgt == curPage then
+    local _, inT = pageFades(curPage)
+    pgFade = min(1, pgFade + dt / inT)
+  end
 
   -- geometry relative to the start of the line
   local base0 = wx[F]
@@ -1091,8 +1214,17 @@ local function lyricFramePaged(now, dt, t, cmd)
   else
     pillL, pillLv = smoothDamp(pillL, gl, pillLv, C.pillST * 0.5, dt)
     pillR, pillRv = smoothDamp(pillR, gr, pillRv, C.pillST * 0.5, dt)
-    cam, camV = smoothDamp(cam or 0, scrollT, camV, C.camST, dt)
+    local oldCam = cam or 0
+    cam, camV = smoothDamp(oldCam, scrollT, camV, C.camST, dt)
+    -- The line scrolls with a spring, the pill advances at the speed of the words. When a fast
+    -- word is followed by a slow one the spring can briefly outrun the pill, which then seems to
+    -- slide backwards on screen. Cap the scroll so neither edge of the pill moves left.
+    if pgScreenR and (pillR - cam < pgScreenR or pillL - cam < pgScreenL) then
+      cam = max(oldCam, min(pillR - pgScreenR, pillL - pgScreenL))
+      camV = (cam - oldCam) / dt
+    end
   end
+  pgScreenR, pgScreenL = pillR - cam, pillL - cam
   local ox = padX - cam
   local overflow = maxScroll > 0.5
 
@@ -1162,6 +1294,35 @@ local function lyricFramePaged(now, dt, t, cmd)
     end
   end
 
+  -- Prepare the next line while this one is on screen: its words get their text and are measured
+  -- (invisible), so the switch does not have to wait a frame or two for the widths.
+  local nextF = Lw + 1
+  if nextF <= nw then
+    local ntop = min(pL[nextF], nextF + N - 1)
+    if (top - F + 1) + (ntop - nextF + 1) <= N then
+      for k = nextF, ntop do
+        local m = (k - 1) % N + 1
+        used[m] = true
+        local s = S[m]
+        if s.k ~= k then
+          s.k, s.setf, s.setT = k, frame, now
+          s.x, s.col, s.vis = nil, nil, nil
+          cmd[#cmd + 1] = '[!SetOption S' .. m .. ' Text "' .. clean(words[k].text) .. '"]'
+        end
+        if ww[k] then
+          if s.vis ~= false then
+            s.vis = false
+            cmd[#cmd + 1] = '[!HideMeter S' .. m .. ']'
+          end
+        elseif s.vis ~= true then
+          s.vis = true
+          s.col = K.textStr .. ',0'
+          cmd[#cmd + 1] = '[!SetOption S' .. m .. ' FontColor "' .. s.col .. '"][!ShowMeter S' .. m .. ']'
+        end
+      end
+    end
+  end
+
   for m = 1, N do
     if not used[m] then
       local s = S[m]
@@ -1206,6 +1367,97 @@ end
 
 -- ---------- main loop ----------
 
+-- starts and drives the lyrics download. Kept out of Update() because Lua 5.1 (used by
+-- Rainmeter) allows a function at most 60 upvalues and Update() was over the limit.
+local function pumpRequests(now)
+  -- wait until title/artist have stopped changing (the player can update them a moment
+  -- apart), then request lyrics
+  if fetchPending and now - seenSince > 0.7 then
+    fetchPending = false
+    waiting, waitSince = true, now
+    fetch(curTitle, curArtist)
+  end
+  if trigF and frame >= trigF then
+    trigF = nil
+    if not enabledOnce[trigM] then
+      enabledOnce[trigM] = true
+      SKIN:Bang('!EnableMeasure', trigM)
+      updF, updM = frame + 4, trigM
+    else
+      SKIN:Bang('!CommandMeasure', trigM, 'Update')
+    end
+  end
+  if updF and frame >= updF then
+    updF = nil
+    SKIN:Bang('!CommandMeasure', updM, 'Update')
+  end
+  if waiting and now - waitSince > 20 then failFinal() end
+end
+
+local function trackTick(now)
+  local title  = mTitle:GetStringValue() or ''
+  local artist = mArtist:GetStringValue() or ''
+  if title ~= curTitle or artist ~= curArtist then
+    curTitle, curArtist = title, artist
+    seenSince = now
+    clearWords()
+    lastPos = -1
+    setMode(false)
+    waiting, trigF, updF = false, nil, nil
+    Q.stage = 0
+    fetchPending = (title ~= '' and artist ~= '')
+  end
+
+end
+
+local function wallTick(now)
+  if C.colorMode == 'wallpaper' and mWall then
+    if lastWallRun == nil and frame > 30 then
+      lastWallRun = now
+      SKIN:Bang('!CommandMeasure', 'mWall', 'Run')
+    elseif lastWallRun and C.wallEvery > 0 and now - lastWallRun > C.wallEvery then
+      lastWallRun = now
+      SKIN:Bang('!CommandMeasure', 'mWall', 'Run')
+    end
+  end
+
+end
+
+local function progressTick(cmd)
+  if C.showProg then
+    local dur = readTime(mDuration)
+    local frac
+    if dur > 0 then frac = disp / dur else frac = (mProgress:GetValue() or 0) / 100 end
+    frac = clamp(frac, 0, 1)
+    if curTitle == '' then frac = 0 end
+    local pw = floor(frac * L.barW * 10 + 0.5) / 10
+    if pw ~= lastProg then
+      lastProg = pw
+      cmd[#cmd + 1] = string.format(
+        '[!SetOption ProgressFill Shape "Rectangle 0,0,%.1f,%d,%.1f | Fill Color %s | StrokeWidth 0"]',
+        max(pw, 0.01), C.progH, C.progH / 2, K.light)
+    end
+  end
+end
+
+local function debugTick(now, cmd)
+  if C.debug and now - lastDbg > 0.5 then
+    lastDbg = now
+    local w1 = segM[1] and segM[1]:GetW() or -1
+    local parts = {
+      string.format('words:%d groups:%d mode:%s wait:%s src:%s %s', nw, #gT0, tostring(curMode), tostring(waiting), Q.src, Q.pick),
+      string.format('t:%.1f appear:%.2f cam:%.0f style:%s page:%s', disp, appear, cam or -1, C.mode, tostring(curPage)),
+      string.format('w1:%s pill:%s', tostring(w1), tostring(lastPill)),
+      'current: ' .. tostring(dbgCur),
+      'wall: ' .. (wall and (wall[1] .. ',' .. wall[2] .. ',' .. wall[3]) or 'none'),
+    }
+    for i = 1, #parts do parts[i] = clean(parts[i]) end
+    cmd[#cmd + 1] = '[!SetOption DebugText Text "pos: %1 | state: %2#CRLF#' .. table.concat(parts, '#CRLF#') .. '"]'
+    cmd[#cmd + 1] = '[!UpdateMeter DebugText]'
+  end
+
+end
+
 function Update()
   if not ready then
     ready = setup()
@@ -1218,52 +1470,9 @@ function Update()
   lastFrame = now
   local cmd = {}
 
-  -- track change
-  local title  = mTitle:GetStringValue() or ''
-  local artist = mArtist:GetStringValue() or ''
-  if title ~= curTitle or artist ~= curArtist then
-    curTitle, curArtist = title, artist
-    seenSince = now
-    clearWords()
-    lastPos = -1
-    setMode(false)
-    waiting, trigF, updF = false, nil, nil
-    fetchPending = (title ~= '' and artist ~= '')
-  end
-
-  -- wait until title/artist have stopped changing (the player can update them a moment
-  -- apart), then request lyrics
-  if fetchPending and now - seenSince > 0.7 then
-    fetchPending = false
-    waiting, waitSince = true, now
-    fetch(curTitle, curArtist)
-  end
-  if trigF and frame >= trigF then
-    trigF = nil
-    if not enabledOnce then
-      enabledOnce = true
-      SKIN:Bang('!EnableMeasure', 'mLyrics')
-      updF = frame + 4
-    else
-      SKIN:Bang('!CommandMeasure', 'mLyrics', 'Update')
-    end
-  end
-  if updF and frame >= updF then
-    updF = nil
-    SKIN:Bang('!CommandMeasure', 'mLyrics', 'Update')
-  end
-  if waiting and now - waitSince > 15 then OnFailed() end
-
-  -- wallpaper colour
-  if C.colorMode == 'wallpaper' and mWall then
-    if lastWallRun == nil and frame > 30 then
-      lastWallRun = now
-      SKIN:Bang('!CommandMeasure', 'mWall', 'Run')
-    elseif lastWallRun and C.wallEvery > 0 and now - lastWallRun > C.wallEvery then
-      lastWallRun = now
-      SKIN:Bang('!CommandMeasure', 'mWall', 'Run')
-    end
-  end
+  trackTick(now)
+  pumpRequests(now)
+  wallTick(now)
 
   -- smoothed playback time: interpolates between the player's coarse updates
   local playing = isPlaying()
@@ -1275,27 +1484,15 @@ function Update()
   if firstTime or abs(est - disp) > 1.5 then
     disp, firstTime = est, false
   elseif playing then
-    disp = disp + dt
-    disp = disp + (est - disp) * (1 - exp(-dt * 5))
+    -- The player reports its position coarsely and unevenly, so the estimate wobbles by a few
+    -- tenths of a second. Never let the displayed time run backwards: when it is ahead of the
+    -- estimate it simply waits (rate 0) and when it is behind it catches up (up to 2.5x).
+    disp = disp + dt * clamp(1 + (est - disp) * 4, 0, 2.5)
   else
     disp = disp + (est - disp) * (1 - exp(-dt * 10))
   end
 
-  -- progress bar
-  if C.showProg then
-    local dur = readTime(mDuration)
-    local frac
-    if dur > 0 then frac = disp / dur else frac = (mProgress:GetValue() or 0) / 100 end
-    frac = clamp(frac, 0, 1)
-    if title == '' then frac = 0 end
-    local pw = floor(frac * L.barW * 10 + 0.5) / 10
-    if pw ~= lastProg then
-      lastProg = pw
-      cmd[#cmd + 1] = string.format(
-        '[!SetOption ProgressFill Shape "Rectangle 0,0,%.1f,%d,%.1f | Fill Color %s | StrokeWidth 0"]',
-        max(pw, 0.01), C.progH, C.progH / 2, K.light)
-    end
-  end
+  progressTick(cmd)
 
   -- visualizer
   stepCtl(now, dt)
@@ -1311,21 +1508,7 @@ function Update()
     end
   end
 
-  -- troubleshooting readout (Debug=1)
-  if C.debug and now - lastDbg > 0.5 then
-    lastDbg = now
-    local w1 = segM[1] and segM[1]:GetW() or -1
-    local parts = {
-      string.format('words:%d groups:%d mode:%s wait:%s', nw, #gT0, tostring(curMode), tostring(waiting)),
-      string.format('t:%.1f appear:%.2f cam:%.0f style:%s page:%s', disp, appear, cam or -1, C.mode, tostring(curPage)),
-      string.format('w1:%s pill:%s', tostring(w1), tostring(lastPill)),
-      'current: ' .. tostring(dbgCur),
-      'wall: ' .. (wall and (wall[1] .. ',' .. wall[2] .. ',' .. wall[3]) or 'none'),
-    }
-    for i = 1, #parts do parts[i] = clean(parts[i]) end
-    cmd[#cmd + 1] = '[!SetOption DebugText Text "pos: %1 | state: %2#CRLF#' .. table.concat(parts, '#CRLF#') .. '"]'
-    cmd[#cmd + 1] = '[!UpdateMeter DebugText]'
-  end
+  debugTick(now, cmd)
 
   if #cmd > 0 then
     cmd[#cmd + 1] = '[!UpdateMeterGroup Lyr][!UpdateMeter ProgressFill][!UpdateMeter Vis][!Redraw]'
