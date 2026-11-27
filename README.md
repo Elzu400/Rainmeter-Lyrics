@@ -11,7 +11,12 @@ current lyric line, a progress bar and a small 4-band audio visualizer.
 
 - Synced lyrics from [LRCLIB](https://lrclib.net). If the exact lookup finds nothing, it tries
   LRCLIB's search (tolerant of "feat.", "- Live" and spelling differences, and matched by song
-  length so the wrong version is rejected), then falls back to the song title and artist.
+  length so the wrong version is rejected). If LRCLIB has nothing it tries **KuGou**, then
+  **NetEase Cloud Music**, and finally shows the song title and artist. Each step is only
+  used when the previous one found nothing, and a hit must match the song's title and length.
+  NetEase lyrics that carry word-by-word timing make the highlight follow the real words
+  (other sources are spread over each line automatically). Lyrics that include `<mm:ss.xx>`
+  word tags are handled the same way.
 - **Paged lyric style (default):** one line stays still while a highlight glides across
   its words. Long lines shift only as much as needed; lines cross-fade into each other.
   Calm, with no constant scrolling.

@@ -97,6 +97,10 @@ Information=Pill lyrics for Sonora (LRCLIB + MediaPlayer). Right-click the skin 
 ; set at runtime by lyrics.lua
 LyricsURL=https://lrclib.net/api/get
 LyricsSearchURL=https://lrclib.net/api/search
+KgSearchURL=https://lyrics.kugou.com/search
+KgLyricsURL=https://lyrics.kugou.com/download
+NeSearchURL=https://music.163.com/api/search/get/web
+NeLyricsURL=https://music.163.com/api/song/lyric
 DimColor=175,175,195,165
 
 ; ====================== MEASURES ======================
@@ -192,6 +196,55 @@ FinishAction=[!CommandMeasure mScript "OnSearched()"]
 OnConnectErrorAction=[!CommandMeasure mScript "OnSearchFailed()"]
 OnRegExpErrorAction=[!CommandMeasure mScript "OnSearchFailed()"]
 OnDownloadErrorAction=[!CommandMeasure mScript "OnSearchFailed()"]
+
+; ---- fallback providers: KuGou (search, download) and NetEase (search, lyric) ----
+[mKgS]
+Measure=WebParser
+URL=#KgSearchURL#
+UserAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36
+UpdateRate=-1
+DynamicVariables=1
+Disabled=1
+FinishAction=[!CommandMeasure mScript "OnKgSearched()"]
+OnConnectErrorAction=[!CommandMeasure mScript "OnKgFailed()"]
+OnRegExpErrorAction=[!CommandMeasure mScript "OnKgFailed()"]
+OnDownloadErrorAction=[!CommandMeasure mScript "OnKgFailed()"]
+
+[mKgL]
+Measure=WebParser
+URL=#KgLyricsURL#
+UserAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36
+UpdateRate=-1
+DynamicVariables=1
+Disabled=1
+FinishAction=[!CommandMeasure mScript "OnKgLyrics()"]
+OnConnectErrorAction=[!CommandMeasure mScript "OnKgFailed()"]
+OnRegExpErrorAction=[!CommandMeasure mScript "OnKgFailed()"]
+OnDownloadErrorAction=[!CommandMeasure mScript "OnKgFailed()"]
+
+[mNeS]
+Measure=WebParser
+URL=#NeSearchURL#
+UserAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36
+UpdateRate=-1
+DynamicVariables=1
+Disabled=1
+FinishAction=[!CommandMeasure mScript "OnNeSearched()"]
+OnConnectErrorAction=[!CommandMeasure mScript "OnNeFailed()"]
+OnRegExpErrorAction=[!CommandMeasure mScript "OnNeFailed()"]
+OnDownloadErrorAction=[!CommandMeasure mScript "OnNeFailed()"]
+
+[mNeL]
+Measure=WebParser
+URL=#NeLyricsURL#
+UserAgent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36
+UpdateRate=-1
+DynamicVariables=1
+Disabled=1
+FinishAction=[!CommandMeasure mScript "OnNeLyrics()"]
+OnConnectErrorAction=[!CommandMeasure mScript "OnNeFailed()"]
+OnRegExpErrorAction=[!CommandMeasure mScript "OnNeFailed()"]
+OnDownloadErrorAction=[!CommandMeasure mScript "OnNeFailed()"]
 
 ; ---- average wallpaper colour (only run when Color source = Wallpaper) ----
 [mWall]

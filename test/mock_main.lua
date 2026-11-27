@@ -70,6 +70,7 @@ local songT, playing = 0, true
 local title, artist = 'Midnight Drive', 'The Testers'
 local lyricsRaw = ''
 local searchRaw = ''
+local provRaw = {}                    -- responses of the KuGou / NetEase measures
 local band = { 0, 0, 0, 0, 0, 0, 0, 0 }
 
 local snap = { nextS = 0.2, val = 0, k = 0 }
@@ -104,6 +105,10 @@ local MS = {
   mCover = mk(function() return '' end, function() return 0 end),
   mLyrics = mk(function() return lyricsRaw end, function() return 0 end),
   mSearch = mk(function() return searchRaw end, function() return 0 end),
+  mKgS = mk(function() return provRaw.mKgS or '' end, function() return 0 end),
+  mKgL = mk(function() return provRaw.mKgL or '' end, function() return 0 end),
+  mNeS = mk(function() return provRaw.mNeS or '' end, function() return 0 end),
+  mNeL = mk(function() return provRaw.mNeL or '' end, function() return 0 end),
   mWall = mk(function() return '40,90,160' end, function() return 0 end),
 }
 for i = 1, 8 do MS['mBand' .. i] = mk(function() return '' end, function() return band[i] end) end
@@ -154,6 +159,9 @@ local function tokenize(cmd)
 end
 
 local pendingFetch, pendingWall, pendingSearch = nil, nil, nil
+local pendingProv = {}
+local PROV = { mKgS = 'OnKgSearched', mKgL = 'OnKgLyrics', mNeS = 'OnNeSearched', mNeL = 'OnNeLyrics' }
+local PROV_FAIL = { mKgS = 'OnKgFailed', mKgL = 'OnKgFailed', mNeS = 'OnNeFailed', mNeL = 'OnNeFailed' }
 local frame = 0
 local writes = {}
 
@@ -187,6 +195,7 @@ local function runBang(cmd)
   elseif b == '!CommandMeasure' then
     if t[2] == 'mLyrics' and t[3] == 'Update' then pendingFetch = frame + 20
     elseif t[2] == 'mSearch' and t[3] == 'Update' then pendingSearch = frame + 25
+    elseif PROV[t[2]] and t[3] == 'Update' then pendingProv[#pendingProv + 1] = { m = t[2], at = frame + 22 }
     elseif t[2] == 'mWall' and t[3] == 'Run' then pendingWall = frame + 10
     else err('unexpected CommandMeasure ' .. cmd) end
   elseif b == '!WriteKeyValue' then
@@ -297,6 +306,47 @@ local function searchJson()
     .. '{"id":33,"trackName":"No Lyrics Here","artistName":"Nobody","duration":210.0,"instrumental":false,'
     .. '"plainLyrics":"p","syncedLyrics":null}]'
 end
+local function b64enc(d)
+  local abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  local out = {}
+  for i = 1, #d, 3 do
+    local a, b, c = d:byte(i, i + 2)
+    local v = a * 65536 + (b or 0) * 256 + (c or 0)
+    local c1, c2, c3, c4 = math.floor(v / 262144) % 64, math.floor(v / 4096) % 64, math.floor(v / 64) % 64, v % 64
+    out[#out + 1] = abc:sub(c1 + 1, c1 + 1) .. abc:sub(c2 + 1, c2 + 1)
+      .. (b and abc:sub(c3 + 1, c3 + 1) or '=') .. (c and abc:sub(c4 + 1, c4 + 1) or '=')
+  end
+  return table.concat(out)
+end
+-- MOCK_SRC = kugou | netease | yrc | none : which fallback provider "has" the lyrics
+local SRC = os.getenv('MOCK_SRC') or 'none'
+local YRC_LINES = {}
+for i = 0, 11 do
+  local t0 = i * 2000
+  YRC_LINES[#YRC_LINES + 1] = string.format('[%d,1800](%d,400,0)Hel(%d,400,0)lo (%d,500,0)my (%d,400,0)dear (%d,500,0)friend',
+    t0, t0, t0 + 400, t0 + 800, t0 + 1300, t0 + 1700)
+end
+local YRC = '{\\"t\\":0,\\"c\\":[{\\"tx\\":\\"credit: x\\"}]}\\n' .. table.concat(YRC_LINES, '\\n')
+local function provResponse(m)
+  if m == 'mKgS' then
+    if SRC ~= 'kugou' then return '{"status":200,"info":"OK","candidates":[]}' end
+    return '{"status":200,"info":"OK","errcode":200,"keyword":"x","candidates":[{"id":"111","product_from":"x","accesskey":"AAA",'
+      .. '"singer":"' .. artist .. '","song":"' .. title .. ' (Live)","duration":400000,"score":50},'
+      .. '{"id":"222","product_from":"y","accesskey":"B/B+","singer":"' .. artist .. '","song":"' .. title .. '","duration":210000,"score":40}]}'
+  elseif m == 'mKgL' then
+    local lrc = SYNCED:gsub('\\n', '\n')
+    return '{"status":200,"content":"' .. b64enc('\239\187\191' .. lrc):gsub('/', '\\/') .. '","fmt":"lrc"}'
+  elseif m == 'mNeS' then
+    if SRC ~= 'netease' and SRC ~= 'yrc' then return '{"result":{"songs":[],"songCount":0},"code":200}' end
+    return '{"result":{"songs":[{"id":900,"name":"Other Song","artists":[{"id":1,"name":"Nobody"}],"album":{"id":2,"name":"A"},"duration":300000},'
+      .. '{"id":901,"name":"' .. title .. '","artists":[{"id":1,"name":"' .. artist .. '","picUrl":null}],"album":{"id":2,"name":"A"},"duration":210000}],"songCount":2},"code":200}'
+  else
+    if SRC == 'yrc' then
+      return '{"sgc":false,"lrc":{"version":3,"lyric":"[00:00.00] fallback line"},"yrc":{"version":2,"lyric":"' .. YRC .. '"},"code":200}'
+    end
+    return '{"sgc":false,"lrc":{"version":3,"lyric":"' .. SYNCED .. '"},"code":200}'
+  end
+end
 local startSong = 0
 for f = 1, totalFrames + 200 do
   frame = f
@@ -321,7 +371,7 @@ for f = 1, totalFrames + 200 do
 
   if pendingFetch and f >= pendingFetch then
     pendingFetch = nil
-    if waitFetchFailed then lyricsRaw = ''; ok, e = pcall(OnFailed) else lyricsRaw = SYNCED; ok, e = pcall(OnFetched) end
+    if waitFetchFailed or os.getenv('MOCK_GET') == '0' then lyricsRaw = ''; ok, e = pcall(OnFailed) else lyricsRaw = SYNCED; ok, e = pcall(OnFetched) end
     if not ok then err('OnFetched crashed: ' .. tostring(e)) end
     flush()
   end
@@ -334,6 +384,16 @@ for f = 1, totalFrames + 200 do
     end
     if not ok then err('OnSearched crashed: ' .. tostring(e)) end
     flush()
+  end
+  for i = #pendingProv, 1, -1 do
+    local pp = pendingProv[i]
+    if f >= pp.at then
+      table.remove(pendingProv, i)
+      provRaw[pp.m] = provResponse(pp.m)
+      if SRC == 'err' then ok, e = pcall(_G[PROV_FAIL[pp.m]]) else ok, e = pcall(_G[PROV[pp.m]]) end
+      if not ok then err(PROV[pp.m] .. ' crashed: ' .. tostring(e)) end
+      flush()
+    end
   end
   if pendingWall and f >= pendingWall then
     pendingWall = nil

@@ -448,9 +448,38 @@ local function unescape(s)
   return s
 end
 
-local function parseLRC(raw)
+-- join word pieces into display words: a word ends at whitespace; pieces without any
+-- (syllables, single CJK characters) are glued together until a few characters are collected
+local function mergeToks(toks)
+  local wt, cur, ct = {}, '', nil
+  for _, k in ipairs(toks) do
+    local str = k.s
+    if cur ~= '' and str:find('^%s') then wt[#wt + 1] = { t = ct, text = cur }; cur, ct = '', nil end
+    local core = (str:gsub('^%s+', ''):gsub('%s+$', ''))
+    if core ~= '' then
+      if not ct then ct = k.t end
+      cur = cur .. core
+    end
+    if cur ~= '' and (str:find('%s$') or (cur:byte(1) >= 224 and nchars(cur) >= 3)) then
+      wt[#wt + 1] = { t = ct, text = cur }; cur, ct = '', nil
+    end
+  end
+  if cur ~= '' then wt[#wt + 1] = { t = ct, text = cur } end
+  return wt
+end
+
+local function wtText(wt)
+  local b = {}
+  for i, w in ipairs(wt) do b[i] = w.text end
+  return table.concat(b, ' ')
+end
+
+-- LRC text -> { {t=, text=, wt=optional word list}, ... }. Understands "enhanced" LRC word
+-- tags (<mm:ss.xx>word). noEsc = the text is not JSON-escaped.
+local function parseLRC(raw, noEsc)
   local out = {}
-  local s = unescape(raw)
+  local s = noEsc and raw or unescape(raw)
+  s = s:gsub('^\239\187\191', '')
   for line in (s .. '\n'):gmatch('(.-)\n') do
     local times, text = {}, line
     while true do
@@ -460,8 +489,37 @@ local function parseLRC(raw)
       text = rest
     end
     if #times > 0 then
-      text = text:gsub('^%s+', ''):gsub('%s+$', '')
-      for _, t in ipairs(times) do out[#out + 1] = { t = t, text = text } end
+      local wt
+      if #times == 1 and text:find('<%d+:%d+%.?%d*>') then
+        local toks = {}
+        local pre = text:match('^([^<]*)')
+        if pre and pre:find('%S') then toks[1] = { t = times[1], s = pre } end
+        for a, b, w in text:gmatch('<(%d+):(%d+%.?%d*)>([^<]*)') do
+          toks[#toks + 1] = { t = tonumber(a) * 60 + tonumber(b), s = w }
+        end
+        wt = mergeToks(toks)
+        if #wt == 0 then wt = nil else text = wtText(wt) end
+      end
+      text = text:gsub('<%d+:%d+%.?%d*>', ''):gsub('^%s+', ''):gsub('%s+$', '')
+      for _, t in ipairs(times) do out[#out + 1] = { t = t, text = text, wt = wt } end
+    end
+  end
+  table.sort(out, function(a, b) return a.t < b.t end)
+  return out
+end
+
+-- NetEase word-timed lyrics: [start_ms,dur_ms](start_ms,dur_ms,0)word(...)word ...
+local function parseYRC(raw)
+  local out = {}
+  for line in (unescape(raw) .. '\n'):gmatch('(.-)\n') do
+    local body = line:match('^%[%d+,%d+%](.*)$')
+    if body then
+      local toks = {}
+      for st, w in body:gmatch('%((%d+),%d+,%-?%d+%)([^%(]*)') do
+        toks[#toks + 1] = { t = tonumber(st) / 1000, s = w }
+      end
+      local wt = mergeToks(toks)
+      if #wt > 0 then out[#out + 1] = { t = wt[1].t, text = wtText(wt), wt = wt } end
     end
   end
   table.sort(out, function(a, b) return a.t < b.t end)
@@ -491,6 +549,8 @@ local function buildWords(parsed)
     local gap = nextT - ln.t
     if isPause(ln.text) then
       pushNote(ln.t, i)
+    elseif ln.wt then
+      for _, w in ipairs(ln.wt) do W[#W + 1] = { t = w.t, text = w.text, line = i } end
     else
       local ws, wt, total = {}, {}, 0
       for w in ln.text:gmatch('%S+') do
@@ -801,7 +861,7 @@ end
 
 -- read one JSON string value out of a chunk of text; the result stays JSON-escaped
 local function jstr(chunk, key)
-  local _, e = chunk:find('"' .. key .. '":"', 1, true)
+  local _, e = chunk:find('"' .. key .. '"%s*:%s*"')
   if not e then return nil end
   local i = e + 1
   while true do
@@ -820,6 +880,61 @@ end
 
 local function normName(x)
   return (unescape(x or ''):lower():gsub('[%s%p]', ''))
+end
+
+-- the objects of the JSON array that follows "key": as separate strings
+local function splitObjs(raw, key)
+  local out = {}
+  local _, e = raw:find('"' .. key .. '"%s*:%s*%[')
+  if not e then return out end
+  local depth, inStr, esc, start = 0, false, false, nil
+  for i = e + 1, #raw do
+    local c = raw:byte(i)
+    if inStr then
+      if esc then esc = false elseif c == 92 then esc = true elseif c == 34 then inStr = false end
+    elseif c == 34 then inStr = true
+    elseif c == 123 then
+      if depth == 0 then start = i end
+      depth = depth + 1
+    elseif c == 125 then
+      depth = depth - 1
+      if depth == 0 and start then out[#out + 1] = raw:sub(start, i); start = nil end
+    elseif c == 93 and depth == 0 then break end
+  end
+  return out
+end
+
+local B64 = {}
+do
+  local abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  for i = 1, 64 do B64[abc:byte(i)] = i - 1 end
+end
+local function b64dec(str)
+  str = str:gsub('[^%w%+/]', '')
+  local out = {}
+  for i = 1, #str, 4 do
+    local c1, c2, c3, c4 = B64[str:byte(i)], B64[str:byte(i + 1)], B64[str:byte(i + 2)], B64[str:byte(i + 3)]
+    if not (c1 and c2) then break end
+    local v = c1 * 262144 + c2 * 4096 + (c3 or 0) * 64 + (c4 or 0)
+    out[#out + 1] = string.char(floor(v / 65536) % 256)
+    if c3 then out[#out + 1] = string.char(floor(v / 256) % 256) end
+    if c4 then out[#out + 1] = string.char(v % 256) end
+  end
+  return table.concat(out)
+end
+
+-- how well a search hit (title, artist, duration in seconds) fits the current track; nil = no
+local function matchScore(name, who, dur)
+  local qt, qa = normName(Q.title:gsub('%s*[%(%[].-[%)%]]', '')), normName(Q.artist)
+  if qt == '' then qt = normName(Q.title) end
+  local nt, na = normName(name), normName(who)
+  local diff = (dur and dur > 0 and Q.dur > 0) and math.abs(dur - Q.dur) or nil
+  local titleOk = (nt ~= '' and qt ~= '') and (nt == qt or nt:find(qt, 1, true) or qt:find(nt, 1, true))
+  if not titleOk or (diff and diff > 6) then return nil end
+  local score = (nt == qt and 30 or 15)
+  if na ~= '' and qa ~= '' and (na == qa or na:find(qa, 1, true) or qa:find(na, 1, true)) then score = score + 20 end
+  if diff then score = score - diff * 3 end
+  return score
 end
 
 local function fetch(title, artist)
@@ -885,6 +1000,35 @@ local function pickBest(raw)
   return best
 end
 
+-- search keywords with the usual decorations removed
+local function plainTitleArtist()
+  local t = (Q.title:gsub('%s*[%(%[].-[%)%]]', ''))
+  t = (t:gsub('%s+%-%s+.*$', ''))
+  t = (t:gsub('%s+[Ff]e?a?t%.?%s+.*$', ''))
+  if t == '' then t = Q.title end
+  local a = Q.artist:gsub('%s*[,&;/].*$', ''):gsub('%s+[Ff]e?a?t%.?%s+.*$', '')
+  if a == '' then a = Q.artist end
+  return t, a
+end
+
+-- step 3: KuGou (search, then download the chosen lyric)
+local function startKugou()
+  Q.stage = 3
+  local t, a = plainTitleArtist()
+  SKIN:Bang('!SetVariable', 'KgSearchURL', 'https://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword='
+    .. urlenc(a .. ' - ' .. t) .. '&duration=' .. floor(Q.dur * 1000) .. '&hash=')
+  trigF, trigM = frame + 3, 'mKgS'
+end
+
+-- step 5: NetEase Cloud Music (search, then fetch the lyric of the best match)
+local function startNetease()
+  Q.stage = 5
+  local t, a = plainTitleArtist()
+  SKIN:Bang('!SetVariable', 'NeSearchURL', 'https://music.163.com/api/search/get/web?csrf_token=&hlpretag=&hlposttag='
+    .. '&s=' .. urlenc(t .. ' ' .. a) .. '&type=1&offset=0&total=true&limit=8')
+  trigF, trigM = frame + 3, 'mNeS'
+end
+
 -- ---------- called by WebParser / RunCommand ----------
 
 local function failFinal()
@@ -896,11 +1040,10 @@ local function failFinal()
   end
 end
 
-local function accept(raw, src)
-  if raw == '' or raw == lastRaw then return false end
-  local parsed = parseLRC(raw)
-  if #parsed == 0 then return false end
-  lastRaw = raw
+-- parsed = list of { t, text, wt }; key = something that changes when the lyrics do
+local function acceptParsed(parsed, src, key, minLines)
+  if not key or key == '' or key == lastRaw or #parsed < (minLines or 1) then return false end
+  lastRaw = key
   waiting = false
   Q.src = src
   loadWords(parsed)
@@ -908,26 +1051,98 @@ local function accept(raw, src)
   return true
 end
 
+local function accept(raw, src)
+  if raw == '' then return false end
+  return acceptParsed(parseLRC(raw), src, raw)
+end
+
+local function measureText(name)
+  return SKIN:GetMeasure(name):GetStringValue() or ''
+end
+
+-- one function per WebParser callback; a stale answer (wrong stage) is ignored
 function OnFailed()
-  if waiting and Q.stage == 1 then startSearch() return end
-  failFinal()
+  if waiting and Q.stage == 1 then startSearch() end
 end
 
 function OnFetched()
-  if not waiting then return end
-  local raw = SKIN:GetMeasure('mLyrics'):GetStringValue() or ''
-  if not accept(raw, 'get') then OnFailed() end
+  if not (waiting and Q.stage == 1) then return end
+  if not accept(measureText('mLyrics'), 'lrclib') then startSearch() end
 end
 
 function OnSearched()
-  if not waiting then return end
-  local raw = SKIN:GetMeasure('mSearch'):GetStringValue() or ''
-  local best = pickBest(raw)
-  if not (best and accept(best, 'search')) then failFinal() end
+  if not (waiting and Q.stage == 2) then return end
+  local best = pickBest(measureText('mSearch'))
+  if not (best and accept(best, 'lrclib')) then startKugou() end
 end
 
 function OnSearchFailed()
-  failFinal()
+  if waiting and Q.stage == 2 then startKugou() end
+end
+
+function OnKgSearched()
+  if not (waiting and Q.stage == 3) then return end
+  local raw = measureText('mKgS')
+  local bestId, bestKey, bestScore
+  for _, c in ipairs(splitObjs(raw, 'candidates')) do
+    local id = c:match('"id"%s*:%s*"?(%w+)')
+    local key = jstr(c, 'accesskey')
+    local d = jnum(c, 'duration')
+    if d and d > 1000 then d = d / 1000 end
+    local sc = id and key and matchScore(unescape(jstr(c, 'song') or ''), unescape(jstr(c, 'singer') or ''), d)
+    if sc and (not bestScore or sc > bestScore) then bestId, bestKey, bestScore = id, key, sc end
+  end
+  if not bestId then startNetease() return end
+  Q.stage, Q.pick = 4, 'kg' .. bestId
+  SKIN:Bang('!SetVariable', 'KgLyricsURL', 'https://lyrics.kugou.com/download?ver=1&client=pc&id=' .. urlenc(bestId)
+    .. '&accesskey=' .. urlenc(bestKey) .. '&fmt=lrc&charset=utf8')
+  trigF, trigM = frame + 3, 'mKgL'
+end
+
+function OnKgLyrics()
+  if not (waiting and Q.stage == 4) then return end
+  local content = jstr(measureText('mKgL'), 'content')
+  local ok = content and content ~= '' and acceptParsed(parseLRC(b64dec(content), true), 'kugou', content, 3)
+  if not ok then startNetease() end
+end
+
+function OnKgFailed()
+  if waiting and (Q.stage == 3 or Q.stage == 4) then startNetease() end
+end
+
+function OnNeSearched()
+  if not (waiting and Q.stage == 5) then return end
+  local bestId, bestScore
+  for _, o in ipairs(splitObjs(measureText('mNeS'), 'songs')) do
+    local id = o:match('^{%s*"id"%s*:%s*(%d+)')
+    local who = o:match('"artists"%s*:%s*%[%s*{.-"name"%s*:%s*"(.-)"') or ''
+    local d = tonumber(o:match('"duration"%s*:%s*(%d+)'))
+    local sc = id and matchScore(unescape(jstr(o, 'name') or ''), unescape(who), d and d / 1000)
+    if sc and (not bestScore or sc > bestScore) then bestId, bestScore = id, sc end
+  end
+  if not bestId then failFinal() return end
+  Q.stage, Q.pick = 6, 'ne' .. bestId
+  SKIN:Bang('!SetVariable', 'NeLyricsURL', 'https://music.163.com/api/song/lyric?id=' .. bestId
+    .. '&lv=-1&kv=-1&tv=-1&yv=-1')
+  trigF, trigM = frame + 3, 'mNeL'
+end
+
+function OnNeLyrics()
+  if not (waiting and Q.stage == 6) then return end
+  local raw = measureText('mNeL')
+  local function section(name)
+    local _, e = raw:find('"' .. name .. '"%s*:%s*{')
+    return e and jstr(raw:sub(e), 'lyric')
+  end
+  local yrc, lrc = section('yrc'), section('lrc')
+  local ok = false
+  if yrc and yrc ~= '' then ok = acceptParsed(parseYRC(yrc), 'netease', yrc, 3) end
+  if not ok and lrc and lrc ~= '' then ok = acceptParsed(parseLRC(lrc), 'netease', lrc, 3) end
+  if not ok then failFinal() end
+end
+
+function OnNeFailed()
+  if waiting and (Q.stage == 5 or Q.stage == 6) then failFinal() end
 end
 
 function OnWallpaper()
@@ -1391,7 +1606,7 @@ local function pumpRequests(now)
     updF = nil
     SKIN:Bang('!CommandMeasure', updM, 'Update')
   end
-  if waiting and now - waitSince > 20 then failFinal() end
+  if waiting and now - waitSince > 30 then failFinal() end
 end
 
 local function trackTick(now)
